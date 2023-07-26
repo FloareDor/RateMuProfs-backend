@@ -1,0 +1,33 @@
+{
+  "_id":{
+    "$oid":"6415cca1a43e356863f5d0e2"
+  },
+  "name":"Bhanukiran Perabathini",
+  "rating":{"$numberInt":"4"},
+  "lod":{"$numberInt":"4"},
+  "courses":["Discrete Mathematics","Optimization techniques of AI","Introduction to C"],
+  "dept":"Department of Computer Science and Engineering",
+  "school":"ECSoE",
+  "totRatings":{"$numberInt":"1"},
+  "courseQuality":{"$numberInt":"3"},
+  "helpfulness":{"$numberInt":"4"},
+  "responsiveness":{"$numberInt":"5"},
+  "userRatings": [
+    {
+      "courseQuality": { "$numberInt": "4" },
+      "responsiveness": { "$numberInt": "5" },
+      "lod": { "$numberInt": "4" },
+      "course": "Computer Organization",
+      "date": {
+        "$date": {
+          "$numberLong": "1685267893303"
+        }
+      },
+      "helpfulness": { "$numberInt": "3" },
+      "feedback": "good prof",
+      "_id": {
+        "$oid": "647325b57231c23c45077152"
+      }
+    },
+  ]
+}
