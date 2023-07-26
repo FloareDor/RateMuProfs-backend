@@ -1,2 +1,2 @@
 # RateMuProfs-backend
-Backend for the rate my professor website
+Backend for the rate my professor's website
