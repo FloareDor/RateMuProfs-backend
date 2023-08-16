@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+
 from typing import Dict, Any, List
 from pymongo import MongoClient
 from bson import ObjectId
@@ -68,103 +69,148 @@ async def get_all_professors():
 
 
 # Read Professor
-@app.get("/professors/{professor_id}", response_model=Dict[str, Any])
-async def get_professor(professor_id: str):
-	professor = await collection.find_one({"_id": professor_id})
-	if professor:
-		return professor
-	else:
-		raise HTTPException(status_code=404, detail="Professor not found")
+@app.post("/professors/get_professor", response_model=Dict[str, Any])
+async def get_professor(request: Request):
+	data = await request.json()
+	professor_id = data["professor_id"]
+	print(professor_id)
+	if professor_id:
+		try:
+			professor = collection.find_one({"_id": ObjectId(professor_id)})
+			if professor:
+				professor["_id"] = str(professor["_id"])
+				return professor
+		except Exception as e:
+			print(e)
+			raise HTTPException(status_code=404, detail="Professor not found")
+	raise HTTPException(status_code=404, detail="Professor not found")
 
 # Update Professor
-@app.put("/professors/{professor_id}", response_model=Dict[str, Any])
-async def update_professor(professor_id: str, updated_professor: Dict[str, Any]):
-	result = await collection.update_one(
-		{"_id": professor_id},
-		{"$set": updated_professor}
-	)
-	
-	if result.modified_count == 1:
-		updated_professor["_id"] = professor_id
-		return updated_professor
-	else:
-		raise HTTPException(status_code=404, detail="Professor not found")
+@app.post("/professors/update_professor", response_model=Dict[str, Any])
+async def update_professor(request: Request):
+	data = await request.json()
+	# print(data)
+	professor_id = ObjectId(data["_id"])
+	updated_professor = data
+	updated_professor.pop("_id", None)
+	if professor_id and updated_professor:
+		professor = collection.find_one({"_id": professor_id})
+		print(professor)
+		for key in updated_professor:
+			if updated_professor[key] != professor[key]:
+				professor[key] = updated_professor[key]
+		print(professor)
+		result = collection.update_one(
+			{"_id": professor_id},
+			{"$set": professor}
+		)
+		if result.modified_count == 1:
+			# updated_professor["_id"] = professor_id
+			professor = collection.find_one({"_id": ObjectId(professor_id)})
+			if professor:
+				professor["_id"] = str(professor["_id"])
+				return professor
+	raise HTTPException(status_code=404, detail="Professor not found")
+
 
 # Delete Professor
-@app.delete("/professors/{professor_id}", response_model=Dict[str, str])
-async def delete_professor(professor_id: str):
-	result = await collection.delete_one({"_id": professor_id})
-	if result.deleted_count == 1:
-		return {"message": "Professor deleted successfully"}
-	else:
-		raise HTTPException(status_code=404, detail="Professor not found")
+@app.delete("/professors/delete_professor", response_model=Dict[str, str])
+async def delete_professor(request: Request):
+	data = await request.json()
+	professor_id = data.get("professor_id")
+	
+	if professor_id:
+		result = await collection.delete_one({"_id": professor_id})
+		if result.deleted_count == 1:
+			return {"message": "Professor deleted successfully"}
+	raise HTTPException(status_code=404, detail="Professor not found")
 
 
 
 ########################### RATING CRUD ####################################
 
-from bson import ObjectId
-
-# Create Professor Rating
-@app.post("/professors/{professor_id}/ratings/", response_model=Dict[str, Any])
-async def create_professor_rating(professor_id: str, rating: Dict[str, Any]):
-    professor_object_id = ObjectId(professor_id)
-    rating["_id"] = str(ObjectId())
-    try:
-        result = collection.update_one(
-            {"_id": professor_object_id},
-            {"$push": {"userRatings": rating}}
-        )
-        print(result)
-    except Exception as e:
-        print(e)
-        raise HTTPException(status_code=500, detail="Failed to update professor ratings")
-
-    if result.modified_count == 1:
-        # Since we did not provide an _id for the rating, MongoDB will create it automatically.
-        # We can return the updated professor document to see the assigned _id.
-        updated_professor = collection.find_one({"_id": professor_object_id})
-        if updated_professor:
-            # Convert ObjectId to string before returning the response
-            updated_professor["_id"] = str(updated_professor["_id"])
-            return updated_professor
-        else:
-            raise HTTPException(status_code=404, detail="Professor not found")
-    else:
-        raise HTTPException(status_code=404, detail="Professor not found")
 
 
+# Add Professor Rating
+@app.post("/professors/add_rating", response_model=Dict[str, Any])
+async def create_professor_rating(request: Request):
+	data = await request.json()
+	professor_id = data["_id"]
+	rating = data["rating"]
+	
+	if professor_id and rating:
+		professor_object_id = ObjectId(professor_id)
+		rating["_id"] = ObjectId()
+		try:
+			result = collection.update_one(
+				{"_id": professor_object_id},
+				{"$push": {"userRatings": rating}}
+			)
+		except Exception as e:
+			raise HTTPException(status_code=500, detail="Failed to update professor ratings")
+
+		if result.modified_count == 1:
+			updated_professor = collection.find_one({"_id": professor_object_id})
+			if updated_professor:
+				updated_professor["_id"] = str(updated_professor["_id"])
+				for i in range(len(updated_professor["userRatings"])):
+					updated_professor["userRatings"][i]["_id"] = str(updated_professor["userRatings"][i]["_id"])
+				return updated_professor
+			else:
+				raise HTTPException(status_code=404, detail="Professor not found")
+	raise HTTPException(status_code=400, detail="Invalid input data")
 
 
 # Read Professor Ratings
-@app.get("/professors/{professor_id}/ratings/", response_model=List[Dict[str, Any]])
-async def get_professor_ratings(professor_id: str):
-	professor = collection.find_one({"_id": ObjectId(professor_id)}, {"userRatings": 1})
-	if professor and "userRatings" in professor:
-		return professor["userRatings"]
-	else:
-		raise HTTPException(status_code=404, detail="Professor not found or no ratings available")
+@app.post("/professors/get_ratings", response_model=List[Dict[str, Any]])
+async def get_professor_ratings(request: Request):
+	data = await request.json()
+	professor_id = data["_id"]
+	
+	if professor_id:
+		professor = collection.find_one({"_id": ObjectId(professor_id)})
+
+		if professor and "userRatings" in professor:
+			for i in range(len(professor["userRatings"])):
+				professor["userRatings"][i]["_id"] = str(professor["userRatings"][i]["_id"])
+			return professor["userRatings"]
+	raise HTTPException(status_code=404, detail="Professor not found or no ratings available")
 
 # Update Professor Rating
-@app.put("/professors/{professor_id}/ratings/{rating_id}/", response_model=Dict[str, Any])
-async def update_professor_rating(professor_id: str, rating_id: str, updated_rating: Dict[str, Any]):
-	result = collection.update_one(
-		{"_id": ObjectId(professor_id), "userRatings._id": rating_id},
-		{"$set": {"userRatings.$": updated_rating}}
-	)
-	if result.modified_count == 1:
-		return updated_rating
-	else:
-		raise HTTPException(status_code=404, detail="Professor rating not found")
+@app.post("/professors/update_rating", response_model=Dict[str, Any])
+async def update_professor_rating(request: Request):
+	data = await request.json()
+	professor_id = ObjectId(data["professor_id"])
+	rating_id = data["rating"]["_id"]
+	updated_rating = data["rating"]
+	
+	if professor_id and rating_id and updated_rating:
+		result = collection.update_one(
+			{"_id": professor_id, "userRatings._id": rating_id},
+			{"$set": {"userRatings.$": updated_rating}}
+		)
+		if result.modified_count == 1:
+			professor = collection.find_one({"_id": professor_id})
+			if professor and "userRatings" in professor:
+				for i in range(len(professor["userRatings"])):
+					professor["userRatings"][i]["_id"] = str(professor["userRatings"][i]["_id"])
+				return professor["userRatings"]
+			# return updated_rating
+	raise HTTPException(status_code=404, detail="Professor rating not found")
+
 
 # Delete Professor Rating
-@app.delete("/professors/{professor_id}/ratings/{rating_id}/", response_model=Dict[str, str])
-async def delete_professor_rating(professor_id: str, rating_id: str):
-	result = await collection.update_one(
-		{"_id": ObjectId(professor_id)},
-		{"$pull": {"userRatings": {"_id": rating_id}}}
-	)
-	if result.modified_count == 1:
-		return {"message": "Professor rating deleted successfully"}
-	else:
-		raise HTTPException(status_code=404, detail="Professor rating not found")
+@app.post("/professors/delete_rating", response_model=Dict[str, str])
+async def delete_professor_rating(request: Request):
+	data = await request.json()
+	professor_id = data.get("professor_id")
+	rating_id = data.get("rating_id")
+	
+	if professor_id and rating_id:
+		result = await collection.update_one(
+			{"_id": ObjectId(professor_id)},
+			{"$pull": {"userRatings": {"_id": rating_id}}}
+		)
+		if result.modified_count == 1:
+			return {"message": "Professor rating deleted successfully"}
+	raise HTTPException(status_code=404, detail="Professor rating not found")
