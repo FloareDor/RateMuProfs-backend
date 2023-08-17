@@ -1,8 +1,14 @@
 from fastapi import FastAPI, HTTPException, Request
-
 from typing import Dict, Any, List
 from pymongo import MongoClient
 from bson import ObjectId
+import re
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import json
+
+with open("prof_data.json", "r") as json_file:
+    data = json.load(json_file)
 
 # MongoDB connection
 client = MongoClient("mongodb://localhost:27017")
@@ -10,47 +16,63 @@ db = client["rate_my_professor"]
 collection = db["professors"]
 collection.delete_many({})
 
-# Document to be inserted
-document = {
-	"name": "Bhanukiran Perabathini",
-	"rating": 4,
-	"lod": 4,
-	"courses": ["Discrete Mathematics", "Optimization techniques of AI", "Introduction to C"],
-	"dept": "Department of Computer Science and Engineering",
-	"school": "ECSoE",
-	"totRatings": 1,
-	"courseQuality": 3,
-	"helpfulness": 4,
-	"responsiveness": 5,
-	"userRatings": [
-		{
-			"_id": str(ObjectId()),
-			"courseQuality": 4,
-			"responsiveness": 5,
-			"lod": 4,
-			"course": "Computer Organization",
-			"date": {"$date": 1685267893303},
-			"helpfulness": 3,
-			"feedback": "good prof",
-		},
-	],
-}
+# # Document to be inserted
+# document = {
+# 	"name": "Bhanukiran Perabathini",
+# 	"rating": 4,
+# 	"lod": 4,
+# 	"courses": ["Discrete Mathematics", "Optimization techniques of AI", "Introduction to C"],
+# 	"dept": "Department of Computer Science and Engineering",
+# 	"school": "ECSoE",
+# 	"totRatings": 1,
+# 	"courseQuality": 3,
+# 	"helpfulness": 4,
+# 	"responsiveness": 5,
+# 	"userRatings": [
+# 		{
+# 			"_id": str(ObjectId()),
+# 			"courseQuality": 4,
+# 			"responsiveness": 5,
+# 			"lod": 4,
+# 			"course": "Computer Organization",
+# 			"date": {"$date": 1685267893303},
+# 			"helpfulness": 3,
+# 			"feedback": "good prof",
+# 		},
+# 	],
+# }
 
-# Insert the document into the collection
-insert_result = collection.insert_one(document)
+for prof in data:
+	# Insert the document into the collection
+	insert_result = collection.insert_one(prof)
 
-# Check if the insertion was successful
-if insert_result.acknowledged:
-	print("Document inserted successfully!")
-	for doc in collection.find():
-		# Convert the ObjectId to string representation before printing
-		doc["_id"] = str(doc["_id"])
-		print(doc)
-else:
-	print("Failed to insert the document.")
+	# Check if the insertion was successful
+	if insert_result.acknowledged:
+		print("Document inserted successfully!")
+		for doc in collection.find():
+			# Convert the ObjectId to string representation before printing
+			doc["_id"] = str(doc["_id"])
+			# print(doc)
+	else:
+		print("Failed to insert the document.")
 
 
 app = FastAPI()
+
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+async def main():
+    return {"message": "Hello World"}
 
 ########################### PROFESSOR CRUD ####################################
 
@@ -66,13 +88,25 @@ async def get_all_professors():
 		return professors
 	else:
 		raise HTTPException(status_code=404, detail="No professors found")
-
+	
+	
+@app.get("/professors/by_school/{school}", response_model=List[Dict[str, Any]])
+async def get_professors_by_school(school: str):
+    professors = []
+    for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}):
+        # Convert the ObjectId to string representation before returning
+        professor["_id"] = str(professor["_id"])
+        professors.append(professor)
+    if professors:
+        return professors
+    else:
+        raise HTTPException(status_code=404, detail=f"No professors found for school: {school}")
 
 # Read Professor
 @app.post("/professors/get_professor", response_model=Dict[str, Any])
 async def get_professor(request: Request):
 	data = await request.json()
-	professor_id = data["professor_id"]
+	professor_id = data["_id"]
 	print(professor_id)
 	if professor_id:
 		try:
@@ -84,6 +118,7 @@ async def get_professor(request: Request):
 			print(e)
 			raise HTTPException(status_code=404, detail="Professor not found")
 	raise HTTPException(status_code=404, detail="Professor not found")
+
 
 # Update Professor
 @app.post("/professors/update_professor", response_model=Dict[str, Any])
@@ -128,7 +163,6 @@ async def delete_professor(request: Request):
 
 
 ########################### RATING CRUD ####################################
-
 
 
 # Add Professor Rating
