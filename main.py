@@ -44,19 +44,20 @@ collection.delete_many({})
 
 for prof in data:
 	# Insert the document into the collection
+	prof["_id"] = ObjectId(prof["_id"])
 	insert_result = collection.insert_one(prof)
 
 	# Check if the insertion was successful
 	if insert_result.acknowledged:
-		print("Document inserted successfully!")
+		# print("Document inserted successfully!")
 		for doc in collection.find():
 			# Convert the ObjectId to string representation before printing
 			doc["_id"] = str(doc["_id"])
-			# print(doc)
+			print(doc)
 	else:
 		print("Failed to insert the document.")
 
-
+print("Document inserted successfully!")
 app = FastAPI()
 
 origins = ["*"]
@@ -80,7 +81,7 @@ async def main():
 @app.get("/professors/", response_model=List[Dict[str, Any]])
 async def get_all_professors():
 	professors = []
-	for professor in collection.find():
+	for professor in collection.find().sort("name"):
 		# Convert the ObjectId to string representation before returning
 		professor["_id"] = str(professor["_id"])
 		professors.append(professor)
@@ -93,7 +94,7 @@ async def get_all_professors():
 @app.get("/professors/by_school/{school}", response_model=List[Dict[str, Any]])
 async def get_professors_by_school(school: str):
     professors = []
-    for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}):
+    for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
         # Convert the ObjectId to string representation before returning
         professor["_id"] = str(professor["_id"])
         professors.append(professor)
@@ -195,19 +196,19 @@ async def create_professor_rating(request: Request):
 	raise HTTPException(status_code=400, detail="Invalid input data")
 
 
-# Read Professor Ratings
-@app.post("/professors/get_ratings", response_model=List[Dict[str, Any]])
+# Get Professor Ratings
+@app.get("/professors/get_ratings", response_model=List[Dict[str, Any]])
 async def get_professor_ratings(request: Request):
 	data = await request.json()
 	professor_id = data["_id"]
-	
+	print(collection.find_one({"_id": ObjectId(professor_id)}))
 	if professor_id:
 		professor = collection.find_one({"_id": ObjectId(professor_id)})
-
 		if professor and "userRatings" in professor:
 			for i in range(len(professor["userRatings"])):
 				professor["userRatings"][i]["_id"] = str(professor["userRatings"][i]["_id"])
 			return professor["userRatings"]
+		
 	raise HTTPException(status_code=404, detail="Professor not found or no ratings available")
 
 # Update Professor Rating
