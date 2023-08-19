@@ -9,9 +9,9 @@ Backend for the rate my professor website
 	pip install -r requirements.txt
 	```
 
-2. Run the main script
+2. Run the backend script
 
 	```bat
-	uvicorn main:app --host 127.0.0.1 --port 8000
+	uvicorn async_backend:app --host 127.0.0.1 --port 8000
 	```
 

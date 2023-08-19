@@ -6,11 +6,10 @@ import re
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import json
-from bson import ObjectId
 from pymongo import ReturnDocument
 
 with open("prof_data.json", "r") as json_file:
-	data = json.load(json_file)
+    data = json.load(json_file)
 
 # MongoDB connection
 client = MongoClient("mongodb://localhost:27017")
@@ -18,37 +17,11 @@ db = client["rate_my_professor"]
 collection = db["professors"]
 collection.delete_many({})
 
-# # Document to be inserted
-# document = {
-# 	"name": "Bhanukiran Perabathini",
-# 	"rating": 4,
-# 	"lod": 4,
-# 	"courses": ["Discrete Mathematics", "Optimization techniques of AI", "Introduction to C"],
-# 	"dept": "Department of Computer Science and Engineering",
-# 	"school": "ECSoE",
-# 	"totRatings": 1,
-# 	"courseQuality": 3,
-# 	"helpfulness": 4,
-# 	"responsiveness": 5,
-# 	"userRatings": [
-# 		{
-# 			"_id": str(ObjectId()),
-# 			"courseQuality": 4,
-# 			"responsiveness": 5,
-# 			"lod": 4,
-# 			"course": "Computer Organization",
-# 			"date": {"$date": 1685267893303},
-# 			"helpfulness": 3,
-# 			"feedback": "good prof",
-# 		},
-# 	],
-# }
-
 for prof in data:
 	# Insert the document into the collection
-	if "userRatings" in prof:
-		for i in range(len(prof["userRatings"])):
-			prof["userRatings"][i]["_id"] = ObjectId(prof["userRatings"][i]["_id"])
+	# if "userRatings" in prof:
+	# 	for i in range(len(prof["userRatings"])):
+	# 		prof["userRatings"][i]["_id"] = ObjectId(prof["userRatings"][i]["_id"])
 			
 	prof["_id"] = ObjectId(prof["_id"])
 	insert_result = collection.insert_one(prof)
@@ -68,22 +41,22 @@ app = FastAPI()
 origins = ["*"]
 
 app.add_middleware(
-	CORSMiddleware,
-	allow_origins=origins,
-	allow_credentials=True,
-	allow_methods=["*"],
-	allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 @app.get("/")
 async def main():
-	return {"message": "Hello World"}
+    return {"message": "Hello World"}
 
 ########################### PROFESSOR CRUD ####################################
 
 # get all profs
-@app.get("/professors/", response_model=List[Dict[str, Any]])
+@app.get("/professors", response_model=List[Dict[str, Any]])
 async def get_all_professors():
 	professors = []
 	for professor in collection.find().sort("name"):
@@ -98,15 +71,15 @@ async def get_all_professors():
 	
 @app.get("/professors/by_school/{school}", response_model=List[Dict[str, Any]])
 async def get_professors_by_school(school: str):
-	professors = []
-	for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
-		# Convert the ObjectId to string representation before returning
-		professor["_id"] = str(professor["_id"])
-		professors.append(professor)
-	if professors:
-		return professors
-	else:
-		raise HTTPException(status_code=404, detail=f"No professors found for school: {school}")
+    professors = []
+    for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
+        # Convert the ObjectId to string representation before returning
+        professor["_id"] = str(professor["_id"])
+        professors.append(professor)
+    if professors:
+        return professors
+    else:
+        raise HTTPException(status_code=404, detail=f"No professors found for school: {school}")
 
 # Read Professor
 @app.post("/professors/get_professor", response_model=Dict[str, Any])
@@ -228,12 +201,17 @@ async def update_professor_rating(request: Request):
 		professor = collection.find_one({"_id": professor_id})
 		if professor and "userRatings" in professor:
 			updated_ratings = professor["userRatings"]
-			
-			for i in range(len(updated_ratings)):
-				if updated_ratings[i]["_id"] == rating_id:
+			count = 0
+			l = len(updated_ratings)
+			for i in range(l):
+				if ObjectId(updated_ratings[i]["_id"]) == rating_id:
 					for key, value in updated_rating.items():
-						if key in updated_ratings[i]:
+						if key in updated_ratings[i] and key != "_id":
 							updated_ratings[i][key] = value
+					break
+				count+=1
+				if count >= l:
+					raise HTTPException(status_code=404, detail="Professor rating not found")
 							
 			result = collection.find_one_and_update(
 				{"_id": professor_id},
@@ -258,7 +236,7 @@ async def delete_professor_rating(request: Request):
 	if professor_id and rating_id:
 		result = collection.update_one(
 			{"_id": ObjectId(professor_id)},
-			{"$pull": {"userRatings": {"_id": rating_id}}}
+			{"$pull": {"userRatings": {"_id": str(rating_id)}}}
 		)
 		if result.modified_count == 1:
 			return {"message": "Professor rating deleted successfully"}
