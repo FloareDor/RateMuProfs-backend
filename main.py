@@ -45,9 +45,9 @@ collection.delete_many({})
 
 for prof in data:
 	# Insert the document into the collection
-	if "userRatings" in prof:
-		for i in range(len(prof["userRatings"])):
-			prof["userRatings"][i]["_id"] = ObjectId(prof["userRatings"][i]["_id"])
+	# if "userRatings" in prof:
+	# 	for i in range(len(prof["userRatings"])):
+	# 		prof["userRatings"][i]["_id"] = ObjectId(prof["userRatings"][i]["_id"])
 			
 	prof["_id"] = ObjectId(prof["_id"])
 	insert_result = collection.insert_one(prof)
@@ -230,7 +230,7 @@ async def update_professor_rating(request: Request):
 			count = 0
 			l = len(updated_ratings)
 			for i in range(l):
-				if updated_ratings[i]["_id"] == rating_id:
+				if ObjectId(updated_ratings[i]["_id"]) == rating_id:
 					for key, value in updated_rating.items():
 						if key in updated_ratings[i] and key != "_id":
 							updated_ratings[i][key] = value
@@ -262,7 +262,7 @@ async def delete_professor_rating(request: Request):
 	if professor_id and rating_id:
 		result = collection.update_one(
 			{"_id": ObjectId(professor_id)},
-			{"$pull": {"userRatings": {"_id": rating_id}}}
+			{"$pull": {"userRatings": {"_id": str(rating_id)}}}
 		)
 		if result.modified_count == 1:
 			return {"message": "Professor rating deleted successfully"}
