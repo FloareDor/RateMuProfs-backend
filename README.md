@@ -5,9 +5,9 @@ Backend for the rate my professor website
 
 1. Install The Dependencies
 
-```bat
-pip install -r requirements.txt
-```
+	```bat
+	pip install -r requirements.txt
+	```
 
 2. Run the main script
 
