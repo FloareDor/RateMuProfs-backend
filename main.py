@@ -6,6 +6,8 @@ import re
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import json
+from bson import ObjectId
+from pymongo import ReturnDocument
 
 with open("prof_data.json", "r") as json_file:
     data = json.load(json_file)
@@ -44,9 +46,12 @@ collection.delete_many({})
 
 for prof in data:
 	# Insert the document into the collection
+	if "userRatings" in prof:
+		for i in range(len(prof["userRatings"])):
+			prof["userRatings"][i]["_id"] = ObjectId(prof["userRatings"][i]["_id"])
+			
 	prof["_id"] = ObjectId(prof["_id"])
 	insert_result = collection.insert_one(prof)
-
 	# Check if the insertion was successful
 	if insert_result.acknowledged:
 		# print("Document inserted successfully!")
@@ -212,26 +217,36 @@ async def get_professor_ratings(request: Request):
 	raise HTTPException(status_code=404, detail="Professor not found or no ratings available")
 
 # Update Professor Rating
-@app.post("/professors/update_rating", response_model=Dict[str, Any])
+@app.post("/professors/update_rating", response_model=List[Dict[str, Any]])
 async def update_professor_rating(request: Request):
-	data = await request.json()
-	professor_id = ObjectId(data["professor_id"])
-	rating_id = data["rating"]["_id"]
-	updated_rating = data["rating"]
-	
-	if professor_id and rating_id and updated_rating:
-		result = collection.update_one(
-			{"_id": professor_id, "userRatings._id": rating_id},
-			{"$set": {"userRatings.$": updated_rating}}
-		)
-		if result.modified_count == 1:
-			professor = collection.find_one({"_id": professor_id})
-			if professor and "userRatings" in professor:
-				for i in range(len(professor["userRatings"])):
-					professor["userRatings"][i]["_id"] = str(professor["userRatings"][i]["_id"])
-				return professor["userRatings"]
-			# return updated_rating
-	raise HTTPException(status_code=404, detail="Professor rating not found")
+    data = await request.json()
+    professor_id = ObjectId(data["_id"])
+    rating_id = ObjectId(data["rating"]["_id"])
+    updated_rating = data["rating"]
+    
+    if professor_id and rating_id and updated_rating:
+        professor = collection.find_one({"_id": professor_id})
+        if professor and "userRatings" in professor:
+            updated_ratings = professor["userRatings"]
+            
+            for i in range(len(updated_ratings)):
+                if updated_ratings[i]["_id"] == rating_id:
+                    for key, value in updated_rating.items():
+                        if key in updated_ratings[i]:
+                            updated_ratings[i][key] = value
+                            
+            result = collection.find_one_and_update(
+                {"_id": professor_id},
+                {"$set": {"userRatings": updated_ratings}},
+                return_document=ReturnDocument.AFTER
+            )
+            
+            if result and "userRatings" in result:
+                for i in range(len(result["userRatings"])):
+                    result["userRatings"][i]["_id"] = str(result["userRatings"][i]["_id"])
+                return result["userRatings"]
+    
+    raise HTTPException(status_code=404, detail="Professor rating not found")
 
 
 # Delete Professor Rating
