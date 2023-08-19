@@ -10,6 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 
 from beanie import Document, Indexed, init_beanie
+import time
 
 app = FastAPI()
 
@@ -62,6 +63,7 @@ async def insert_professors():
 async def get_all_professors():
     professors = await Professor.find().sort(Professor.name).to_list()
     if professors:
+        time.sleep(10)
         return professors
     else:
         raise HTTPException(status_code=404, detail="No professors found")

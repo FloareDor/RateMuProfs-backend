@@ -59,7 +59,7 @@ async def main():
 
 # get all profs
 @app.get("/professors", response_model=List[Dict[str, Any]])
-async def get_all_professors():
+def get_all_professors():
 	professors = []
 	for professor in collection.find().sort("name"):
 		# Convert the ObjectId to string representation before returning
@@ -73,7 +73,7 @@ async def get_all_professors():
 	
 	
 @app.get("/professors/by_school/{school}", response_model=List[Dict[str, Any]])
-async def get_professors_by_school(school: str):
+def get_professors_by_school(school: str):
 	professors = []
 	for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
 		# Convert the ObjectId to string representation before returning
@@ -86,8 +86,8 @@ async def get_professors_by_school(school: str):
 
 # Read Professor
 @app.post("/professors/get_professor", response_model=Dict[str, Any])
-async def get_professor(request: Request):
-	data = await request.json()
+def get_professor(request: Request):
+	data = request.json()
 	professor_id = data["_id"]
 	print(professor_id)
 	if professor_id:
@@ -104,8 +104,8 @@ async def get_professor(request: Request):
 
 # Update Professor
 @app.post("/professors/update_professor", response_model=Dict[str, Any])
-async def update_professor(request: Request):
-	data = await request.json()
+def update_professor(request: Request):
+	data =  request.json()
 	# print(data)
 	professor_id = ObjectId(data["_id"])
 	updated_professor = data
@@ -132,12 +132,12 @@ async def update_professor(request: Request):
 
 # Delete Professor
 @app.delete("/professors/delete_professor", response_model=Dict[str, str])
-async def delete_professor(request: Request):
-	data = await request.json()
+def delete_professor(request: Request):
+	data =  request.json()
 	professor_id = data.get("professor_id")
 	
 	if professor_id:
-		result = await collection.delete_one({"_id": professor_id})
+		result =  collection.delete_one({"_id": professor_id})
 		if result.deleted_count == 1:
 			return {"message": "Professor deleted successfully"}
 	raise HTTPException(status_code=404, detail="Professor not found")
@@ -149,8 +149,8 @@ async def delete_professor(request: Request):
 
 # Add Professor Rating
 @app.post("/professors/add_rating", response_model=Dict[str, Any])
-async def create_professor_rating(request: Request):
-	data = await request.json()
+def create_professor_rating(request: Request):
+	data =  request.json()
 	professor_id = data["_id"]
 	rating = data["rating"]
 	
@@ -179,8 +179,8 @@ async def create_professor_rating(request: Request):
 
 # Get Professor Ratings
 @app.get("/professors/get_ratings", response_model=List[Dict[str, Any]])
-async def get_professor_ratings(request: Request):
-	data = await request.json()
+def get_professor_ratings(request: Request):
+	data =  request.json()
 	professor_id = data["_id"]
 	print(collection.find_one({"_id": ObjectId(professor_id)}))
 	if professor_id:
@@ -194,8 +194,8 @@ async def get_professor_ratings(request: Request):
 
 # Update Professor Rating
 @app.post("/professors/update_rating", response_model=List[Dict[str, Any]])
-async def update_professor_rating(request: Request):
-	data = await request.json()
+def update_professor_rating(request: Request):
+	data =  request.json()
 	professor_id = ObjectId(data["_id"])
 	rating_id = ObjectId(data["rating"]["_id"])
 	updated_rating = data["rating"]
@@ -232,8 +232,8 @@ async def update_professor_rating(request: Request):
 
 # Delete Professor Rating
 @app.post("/professors/delete_rating", response_model=Dict[str, str])
-async def delete_professor_rating(request: Request):
-	data = await request.json()
+def delete_professor_rating(request: Request):
+	data =  request.json()
 	professor_id = ObjectId(data["_id"])
 	rating_id = ObjectId(data["rating"]["_id"])
 	if professor_id and rating_id:
