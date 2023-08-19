@@ -6,11 +6,10 @@ import re
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import json
-from bson import ObjectId
 from pymongo import ReturnDocument
 
 with open("prof_data.json", "r") as json_file:
-	data = json.load(json_file)
+    data = json.load(json_file)
 
 # MongoDB connection
 client = MongoClient("mongodb://localhost:27017")
@@ -46,12 +45,9 @@ collection.delete_many({})
 
 for prof in data:
 	# Insert the document into the collection
-	if "userRatings" in prof:
-		for i in range(len(prof["userRatings"])):
-			prof["userRatings"][i]["_id"] = ObjectId(prof["userRatings"][i]["_id"])
-			
 	prof["_id"] = ObjectId(prof["_id"])
 	insert_result = collection.insert_one(prof)
+
 	# Check if the insertion was successful
 	if insert_result.acknowledged:
 		# print("Document inserted successfully!")
@@ -68,17 +64,17 @@ app = FastAPI()
 origins = ["*"]
 
 app.add_middleware(
-	CORSMiddleware,
-	allow_origins=origins,
-	allow_credentials=True,
-	allow_methods=["*"],
-	allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 @app.get("/")
 async def main():
-	return {"message": "Hello World"}
+    return {"message": "Hello World"}
 
 ########################### PROFESSOR CRUD ####################################
 
@@ -98,15 +94,15 @@ async def get_all_professors():
 	
 @app.get("/professors/by_school/{school}", response_model=List[Dict[str, Any]])
 async def get_professors_by_school(school: str):
-	professors = []
-	for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
-		# Convert the ObjectId to string representation before returning
-		professor["_id"] = str(professor["_id"])
-		professors.append(professor)
-	if professors:
-		return professors
-	else:
-		raise HTTPException(status_code=404, detail=f"No professors found for school: {school}")
+    professors = []
+    for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
+        # Convert the ObjectId to string representation before returning
+        professor["_id"] = str(professor["_id"])
+        professors.append(professor)
+    if professors:
+        return professors
+    else:
+        raise HTTPException(status_code=404, detail=f"No professors found for school: {school}")
 
 # Read Professor
 @app.post("/professors/get_professor", response_model=Dict[str, Any])
