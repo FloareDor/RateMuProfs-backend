@@ -1,13 +1,18 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends, status
 from typing import Dict, Any, List
 from pymongo import MongoClient
 from bson import ObjectId
 import re
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import json
 from pymongo import ReturnDocument
 import time
+import requests
+# from google.auth.transport import requests
+# from google.oauth2 import id_token
+# import httpx
 
 with open("prof_data.json", "r") as json_file:
 	data = json.load(json_file)
@@ -15,21 +20,26 @@ with open("prof_data.json", "r") as json_file:
 # MongoDB connection
 client = MongoClient("mongodb://localhost:27017")
 db = client["rate_my_professor"]
-collection = db["professors"]
-collection.delete_many({})
+professor_collection = db["professors"]
+professor_collection.delete_many({})
+
+# User collection
+user_collection = db["users"]
+user_collection.delete_many({})
+
 
 for prof in data:
-	# Insert the document into the collection
+	# Insert the document into the professor_collection
 	# if "userRatings" in prof:
 	# 	for i in range(len(prof["userRatings"])):
 	# 		prof["userRatings"][i]["_id"] = ObjectId(prof["userRatings"][i]["_id"])
 			
 	prof["_id"] = ObjectId(prof["_id"])
-	insert_result = collection.insert_one(prof)
+	insert_result = professor_collection.insert_one(prof)
 	# Check if the insertion was successful
 	if insert_result.acknowledged:
 		# print("Document inserted successfully!")
-		for doc in collection.find():
+		for doc in professor_collection.find():
 			# Convert the ObjectId to string representation before printing
 			doc["_id"] = str(doc["_id"])
 			print(doc)
@@ -37,6 +47,7 @@ for prof in data:
 		print("Failed to insert the document.")
 
 print("Document inserted successfully!")
+
 app = FastAPI()
 
 origins = ["*"]
@@ -49,11 +60,55 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
-
+# async def verify_google_oauth_token(token: str):
+#     try:
+#         id_info = id_token.verify_oauth2_token(token, requests.Request())
+#         return id_info
+#     except ValueError:
+#         raise HTTPException(status_code=401, detail="Invalid Google OAuth token")
+	
 @app.get("/")
 async def main():
-	time.sleep(1)
 	return {"message": "Hello World"}
+
+
+import httpx
+
+@app.get("/verify_user")
+async def verify_user(request: Request):
+	data = await request.json()
+	token = data['accessToken']
+	headers = {'Authorization': f'Bearer {token}'}
+
+	async with httpx.AsyncClient() as client:
+		response = await client.get('https://www.googleapis.com/oauth2/v3/userinfo', headers=headers)
+		user_info = response.json()
+	if "error" in user_info:
+		return JSONResponse(user_info)
+	existing_user = user_collection.find_one({"$or": [{"email": user_info["email"]}, {"sub": user_info["sub"]}]})
+	user_data = {
+		"sub": user_info.get("sub"),
+		"name": user_info.get("name"),
+		"email": user_info.get("email"),
+		"picture": user_info.get("picture"),
+		"ratings": []
+	}
+	
+	if existing_user:
+		existing_user = dict(existing_user)
+		existing_user["_id"] = str(existing_user["_id"])
+		print("User already exists:", existing_user)
+		return JSONResponse({"response": "User already exists", "user_data": existing_user})
+	else:
+		result = user_collection.insert_one(user_data)
+		user_data.pop("_id")
+		if result.acknowledged:
+			print(f"User added successfully: {user_data}")
+			return JSONResponse({"response": "User added successfully", "user_data": user_data})
+		else:
+			print(f"Failed to add user: {user_data}")
+			raise HTTPException(status_code=400, detail={"response": "Failed to add user", "user": user_data})
+
 
 ########################### PROFESSOR CRUD ####################################
 
@@ -61,7 +116,7 @@ async def main():
 @app.get("/professors", response_model=List[Dict[str, Any]])
 async def get_all_professors():
 	professors = []
-	for professor in collection.find().sort("name"):
+	for professor in professor_collection.find().sort("name"):
 		# Convert the ObjectId to string representation before returning
 		professor["_id"] = str(professor["_id"])
 		professors.append(professor)
@@ -75,7 +130,7 @@ async def get_all_professors():
 @app.get("/professors/by_school/{school}", response_model=List[Dict[str, Any]])
 async def get_professors_by_school(school: str):
 	professors = []
-	for professor in collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
+	for professor in professor_collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
 		# Convert the ObjectId to string representation before returning
 		professor["_id"] = str(professor["_id"])
 		professors.append(professor)
@@ -92,7 +147,7 @@ async def get_professor(request: Request):
 	print(professor_id)
 	if professor_id:
 		try:
-			professor = collection.find_one({"_id": ObjectId(professor_id)})
+			professor = professor_collection.find_one({"_id": ObjectId(professor_id)})
 			if professor:
 				professor["_id"] = str(professor["_id"])
 				return professor
@@ -111,19 +166,19 @@ async def update_professor(request: Request):
 	updated_professor = data
 	updated_professor.pop("_id", None)
 	if professor_id and updated_professor:
-		professor = collection.find_one({"_id": professor_id})
+		professor = professor_collection.find_one({"_id": professor_id})
 		print(professor)
 		for key in updated_professor:
 			if updated_professor[key] != professor[key]:
 				professor[key] = updated_professor[key]
 		print(professor)
-		result = collection.update_one(
+		result = professor_collection.update_one(
 			{"_id": professor_id},
 			{"$set": professor}
 		)
 		if result.modified_count == 1:
 			# updated_professor["_id"] = professor_id
-			professor = collection.find_one({"_id": ObjectId(professor_id)})
+			professor = professor_collection.find_one({"_id": ObjectId(professor_id)})
 			if professor:
 				professor["_id"] = str(professor["_id"])
 				return professor
@@ -137,7 +192,7 @@ async def delete_professor(request: Request):
 	professor_id = data.get("professor_id")
 	
 	if professor_id:
-		result = await collection.delete_one({"_id": professor_id})
+		result = await professor_collection.delete_one({"_id": professor_id})
 		if result.deleted_count == 1:
 			return {"message": "Professor deleted successfully"}
 	raise HTTPException(status_code=404, detail="Professor not found")
@@ -158,7 +213,7 @@ async def create_professor_rating(request: Request):
 		professor_object_id = ObjectId(professor_id)
 		rating["_id"] = ObjectId()
 		try:
-			result = collection.update_one(
+			result = professor_collection.update_one(
 				{"_id": professor_object_id},
 				{"$push": {"userRatings": rating}}
 			)
@@ -166,7 +221,7 @@ async def create_professor_rating(request: Request):
 			raise HTTPException(status_code=500, detail="Failed to update professor ratings")
 
 		if result.modified_count == 1:
-			updated_professor = collection.find_one({"_id": professor_object_id})
+			updated_professor = professor_collection.find_one({"_id": professor_object_id})
 			if updated_professor:
 				updated_professor["_id"] = str(updated_professor["_id"])
 				for i in range(len(updated_professor["userRatings"])):
@@ -182,9 +237,9 @@ async def create_professor_rating(request: Request):
 async def get_professor_ratings(request: Request):
 	data = await request.json()
 	professor_id = data["_id"]
-	print(collection.find_one({"_id": ObjectId(professor_id)}))
+	print(professor_collection.find_one({"_id": ObjectId(professor_id)}))
 	if professor_id:
-		professor = collection.find_one({"_id": ObjectId(professor_id)})
+		professor = professor_collection.find_one({"_id": ObjectId(professor_id)})
 		if professor and "userRatings" in professor:
 			for i in range(len(professor["userRatings"])):
 				professor["userRatings"][i]["_id"] = str(professor["userRatings"][i]["_id"])
@@ -201,7 +256,7 @@ async def update_professor_rating(request: Request):
 	updated_rating = data["rating"]
 	
 	if professor_id and rating_id and updated_rating:
-		professor = collection.find_one({"_id": professor_id})
+		professor = professor_collection.find_one({"_id": professor_id})
 		if professor and "userRatings" in professor:
 			updated_ratings = professor["userRatings"]
 			count = 0
@@ -216,7 +271,7 @@ async def update_professor_rating(request: Request):
 				if count >= l:
 					raise HTTPException(status_code=404, detail="Professor rating not found")
 							
-			result = collection.find_one_and_update(
+			result = professor_collection.find_one_and_update(
 				{"_id": professor_id},
 				{"$set": {"userRatings": updated_ratings}},
 				return_document=ReturnDocument.AFTER
@@ -237,7 +292,7 @@ async def delete_professor_rating(request: Request):
 	professor_id = ObjectId(data["_id"])
 	rating_id = ObjectId(data["rating"]["_id"])
 	if professor_id and rating_id:
-		result = collection.update_one(
+		result = professor_collection.update_one(
 			{"_id": ObjectId(professor_id)},
 			{"$pull": {"userRatings": {"_id": str(rating_id)}}}
 		)
