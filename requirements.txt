@@ -8,3 +8,4 @@ authlib
 requests
 httpx
 starlette
+jwt
