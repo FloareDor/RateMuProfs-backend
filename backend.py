@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 from pymongo import MongoClient
 from bson import ObjectId
 import re
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 import json
