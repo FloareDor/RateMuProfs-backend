@@ -4,20 +4,45 @@ from pymongo import MongoClient
 from bson import ObjectId
 import re
 from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 import json
 from pymongo import ReturnDocument
-import time
 import requests
-# from google.auth.transport import requests
-# from google.oauth2 import id_token
-# import httpx
+import httpx
+from os import environ as env
+from google.auth.exceptions import GoogleAuthError
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from fastapi import HTTPException
+from models.schemas import ratingSchema, professorSchema, userSchema
+from pydantic import BaseModel, ValidationError
+from dotenv import find_dotenv, load_dotenv
+import jwt
+from starlette.requests import Request
+import datetime
+from datetime import timezone
+ENV_FILE = find_dotenv()
+if ENV_FILE:
+	load_dotenv(ENV_FILE)
+JWT_SECRET = env.get("JWT_SECRET")
+print(JWT_SECRET)
 
-with open("prof_data.json", "r") as json_file:
-	data = json.load(json_file)
+d = 		{
+			"courseQuality": 4,
+			"responsiveness": 5,
+			"lod": 4,
+			"course": "Computer Organization",
+			"date": "2023-05-28T09:59:53.346Z",
+			"helpfulness": 3,
+			"feedback": "good prof",
+			"_id": "647325b57231c23c45077152",
+		}
 
-# MongoDB connection
+d = ratingSchema(**d)
+print(d)
+
+# MongoDB professor connection
 client = MongoClient("mongodb://localhost:27017")
 db = client["rate_my_professor"]
 professor_collection = db["professors"]
@@ -27,26 +52,31 @@ professor_collection.delete_many({})
 user_collection = db["users"]
 user_collection.delete_many({})
 
+# Ratings collection
+rating_collection = db["ratings"]
+rating_collection.delete_many({})
 
-for prof in data:
-	# Insert the document into the professor_collection
-	# if "userRatings" in prof:
-	# 	for i in range(len(prof["userRatings"])):
-	# 		prof["userRatings"][i]["_id"] = ObjectId(prof["userRatings"][i]["_id"])
-			
-	prof["_id"] = ObjectId(prof["_id"])
-	insert_result = professor_collection.insert_one(prof)
-	# Check if the insertion was successful
-	if insert_result.acknowledged:
-		# print("Document inserted successfully!")
-		for doc in professor_collection.find():
-			# Convert the ObjectId to string representation before printing
-			doc["_id"] = str(doc["_id"])
-			print(doc)
-	else:
-		print("Failed to insert the document.")
+def insertSample_data(filename):
+	with open(filename, "r") as json_file:
+		data = json.load(json_file)
+	for prof in data:
+		# Insert the document into the professor_collection
+		prof["_id"] = ObjectId(prof["_id"])
+		insert_result = professor_collection.insert_one(prof)
+		# Check if the insertion was successful
+		if insert_result.acknowledged:
+			# print("Document inserted successfully!")
+			for doc in professor_collection.find():
+				# Convert the ObjectId to string representation before printing
+				doc["_id"] = str(doc["_id"])
+				# print(doc)
+		else:
+			print("Failed to insert the document.")
 
-print("Document inserted successfully!")
+	print("Document inserted successfully!")
+
+sampleFilename = "prof_data.json"
+insertSample_data(sampleFilename)
 
 app = FastAPI()
 
@@ -57,29 +87,35 @@ app.add_middleware(
 	allow_origins=origins,
 	allow_credentials=True,
 	allow_methods=["*"],
-	allow_headers=["*"],
+	allow_headers=["*"]
 )
 
-# async def verify_google_oauth_token(token: str):
-#     try:
-#         id_info = id_token.verify_oauth2_token(token, requests.Request())
-#         return id_info
-#     except ValueError:
-#         raise HTTPException(status_code=401, detail="Invalid Google OAuth token")
-	
+def verify_google_oauth_token(token: str):
+	try:
+		id_info = id_token.verify_oauth2_token(token, requests.Request())
+		return id_info
+	except GoogleAuthError:
+		raise HTTPException(status_code=401, detail="Invalid Google OAuth token")
+
+async def encode_jwt(user_data, expire_time):
+	user_data["exp"] = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=expire_time)
+	return jwt.encode(user_data, JWT_SECRET, algorithm="HS256")
+
+async def decode_jwt(encoded_jwt):
+	jwt.decode(encoded_jwt, JWT_SECRET, algorithms=["HS256"])
+
+
+# print(verify_google_oauth_token(str("ya29.a0AfB_byBLRN6R-1eVjKyHiEqxFUcXPJNEWyR-5ogRThC61u0eWLOz2kMIiZ8uyUbXPo1kfHOlypw_IC0pc7EmCF7CF_AxkP68d5DvRBxKQedMf-W5_2Ed2y7KcJUJUr05dZc_qPFAgxZUSwxK5P_5RYaN8BQ4b_Gh99pGRSUaCgYKAbsSARISFQHsvYls3fcdIqOBWTudbOi-C-jAYw0174")))
 @app.get("/")
 async def main():
 	return {"message": "Hello World"}
 
-
-import httpx
-
-@app.get("/verify_user")
+@app.post("/verify_user")
 async def verify_user(request: Request):
 	data = await request.json()
 	token = data['accessToken']
+	print(f"'accessToken': {token}")
 	headers = {'Authorization': f'Bearer {token}'}
-
 	async with httpx.AsyncClient() as client:
 		response = await client.get('https://www.googleapis.com/oauth2/v3/userinfo', headers=headers)
 		user_info = response.json()
@@ -93,23 +129,36 @@ async def verify_user(request: Request):
 		"picture": user_info.get("picture"),
 		"ratings": []
 	}
-	
+	encoded_jwt = ""
 	if existing_user:
 		existing_user = dict(existing_user)
 		existing_user["_id"] = str(existing_user["_id"])
+		existing_user.pop("sub")
+		encoded_jwt = encode_jwt(user_data, expire_time=3600)
 		print("User already exists:", existing_user)
-		return JSONResponse({"response": "User already exists", "user_data": existing_user})
+		return JSONResponse({"response": "User already exists", "user_data": existing_user, "token": encoded_jwt})
 	else:
 		result = user_collection.insert_one(user_data)
-		user_data.pop("_id")
+		user_data.pop("sub")
+		user_data["_id"] = str(user_data["_id"])
+		encoded_jwt = encode_jwt(user_data, expire_time=3600)
 		if result.acknowledged:
 			print(f"User added successfully: {user_data}")
-			return JSONResponse({"response": "User added successfully", "user_data": user_data})
+			return JSONResponse({"response": "User added successfully", "user_data": user_data, "token": encoded_jwt})
 		else:
 			print(f"Failed to add user: {user_data}")
 			raise HTTPException(status_code=400, detail={"response": "Failed to add user", "user": user_data})
 
+user_data = {
+    "sub": "user123",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "picture": "https://example.com/profile.jpg",
+    "ratings": [],
+    "exp": datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=1)
+}
 
+print(jwt.encode(user_data, JWT_SECRET, algorithm="HS256"))
 ########################### PROFESSOR CRUD ####################################
 
 # get all profs
@@ -143,11 +192,11 @@ async def get_professors_by_school(school: str):
 @app.post("/professors/get_professor", response_model=Dict[str, Any])
 async def get_professor(request: Request):
 	data = await request.json()
-	professor_id = data["_id"]
-	print(professor_id)
-	if professor_id:
+	professorID = data["_id"]
+	print(professorID)
+	if professorID:
 		try:
-			professor = professor_collection.find_one({"_id": ObjectId(professor_id)})
+			professor = professor_collection.find_one({"_id": ObjectId(professorID)})
 			if professor:
 				professor["_id"] = str(professor["_id"])
 				return professor
@@ -162,23 +211,23 @@ async def get_professor(request: Request):
 async def update_professor(request: Request):
 	data = await request.json()
 	# print(data)
-	professor_id = ObjectId(data["_id"])
+	professorID = ObjectId(data["_id"])
 	updated_professor = data
 	updated_professor.pop("_id", None)
-	if professor_id and updated_professor:
-		professor = professor_collection.find_one({"_id": professor_id})
+	if professorID and updated_professor:
+		professor = professor_collection.find_one({"_id": professorID})
 		print(professor)
 		for key in updated_professor:
 			if updated_professor[key] != professor[key]:
 				professor[key] = updated_professor[key]
 		print(professor)
 		result = professor_collection.update_one(
-			{"_id": professor_id},
+			{"_id": professorID},
 			{"$set": professor}
 		)
 		if result.modified_count == 1:
-			# updated_professor["_id"] = professor_id
-			professor = professor_collection.find_one({"_id": ObjectId(professor_id)})
+			# updated_professor["_id"] = professorID
+			professor = professor_collection.find_one({"_id": ObjectId(professorID)})
 			if professor:
 				professor["_id"] = str(professor["_id"])
 				return professor
@@ -189,10 +238,10 @@ async def update_professor(request: Request):
 @app.delete("/professors/delete_professor", response_model=Dict[str, str])
 async def delete_professor(request: Request):
 	data = await request.json()
-	professor_id = data.get("professor_id")
+	professorID = data.get("professorID")
 	
-	if professor_id:
-		result = await professor_collection.delete_one({"_id": professor_id})
+	if professorID:
+		result = await professor_collection.delete_one({"_id": professorID})
 		if result.deleted_count == 1:
 			return {"message": "Professor deleted successfully"}
 	raise HTTPException(status_code=404, detail="Professor not found")
@@ -204,14 +253,44 @@ async def delete_professor(request: Request):
 
 # Add Professor Rating
 @app.post("/professors/add_rating", response_model=Dict[str, Any])
-async def create_professor_rating(request: Request):
-	data = await request.json()
-	professor_id = data["_id"]
-	rating = data["rating"]
+async def create_professor_rating(request: Request, authorization: str = Header(None)):
+	if authorization is None:
+		raise HTTPException(status_code=500, detail="No Authorization Token Received")
+	match = re.match(r"Bearer (.+)", authorization)
 	
-	if professor_id and rating:
-		professor_object_id = ObjectId(professor_id)
-		rating["_id"] = ObjectId()
+	if match:
+		jwt_token = match.group(1)
+		print(jwt_token)
+		try:
+			user_data = decode_jwt(jwt_token)
+			print(user_data)
+		except jwt.ExpiredSignatureError:
+			raise HTTPException(status_code=500, detail="Authorization Token Expired")
+		except Exception as e:
+			raise HTTPException(status_code=400, detail="Invalid Authorization Token Received", headers={"detail": str(e)})
+	else:
+		raise HTTPException(status_code=500, detail="No Authorization Token Received")
+	
+	data = await request.json()
+	professorID = data["professorID"]
+	userID = data["userID"]
+	rating = data["rating"]
+	rating["userID"] = userID
+	rating["_id"] = ObjectId()
+
+	try:
+		rating = ratingSchema(**rating)  # Validate and create RatingSchema instance
+	except ValidationError as e:
+		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
+	try:
+		existing_user = user_collection.find_one({"_id": ObjectId(userID)})
+	except:
+		raise HTTPException(status_code=500, detail="Wrong userID format")
+	if not existing_user:
+		raise HTTPException(status_code=500, detail="User not found")
+	if professorID and rating:
+		professor_object_id = ObjectId(professorID)
+		
 		try:
 			result = professor_collection.update_one(
 				{"_id": professor_object_id},
@@ -231,15 +310,14 @@ async def create_professor_rating(request: Request):
 				raise HTTPException(status_code=404, detail="Professor not found")
 	raise HTTPException(status_code=400, detail="Invalid input data")
 
-
 # Get Professor Ratings
 @app.get("/professors/get_ratings", response_model=List[Dict[str, Any]])
 async def get_professor_ratings(request: Request):
 	data = await request.json()
-	professor_id = data["_id"]
-	print(professor_collection.find_one({"_id": ObjectId(professor_id)}))
-	if professor_id:
-		professor = professor_collection.find_one({"_id": ObjectId(professor_id)})
+	professorID = data["professorID"]
+	print(professor_collection.find_one({"_id": ObjectId(professorID)}))
+	if professorID:
+		professor = professor_collection.find_one({"_id": ObjectId(professorID)})
 		if professor and "userRatings" in professor:
 			for i in range(len(professor["userRatings"])):
 				professor["userRatings"][i]["_id"] = str(professor["userRatings"][i]["_id"])
@@ -251,12 +329,16 @@ async def get_professor_ratings(request: Request):
 @app.post("/professors/update_rating", response_model=List[Dict[str, Any]])
 async def update_professor_rating(request: Request):
 	data = await request.json()
-	professor_id = ObjectId(data["_id"])
+	professorID = ObjectId(data["professorID"])
 	rating_id = ObjectId(data["rating"]["_id"])
 	updated_rating = data["rating"]
+	try:
+		update_rating = ratingSchema(**update_rating)  # Validate and create RatingSchema instance
+	except ValidationError as e:
+		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
 	
-	if professor_id and rating_id and updated_rating:
-		professor = professor_collection.find_one({"_id": professor_id})
+	if professorID and rating_id and updated_rating:
+		professor = professor_collection.find_one({"_id": professorID})
 		if professor and "userRatings" in professor:
 			updated_ratings = professor["userRatings"]
 			count = 0
@@ -272,7 +354,7 @@ async def update_professor_rating(request: Request):
 					raise HTTPException(status_code=404, detail="Professor rating not found")
 							
 			result = professor_collection.find_one_and_update(
-				{"_id": professor_id},
+				{"_id": professorID},
 				{"$set": {"userRatings": updated_ratings}},
 				return_document=ReturnDocument.AFTER
 			)
@@ -289,11 +371,16 @@ async def update_professor_rating(request: Request):
 @app.post("/professors/delete_rating", response_model=Dict[str, str])
 async def delete_professor_rating(request: Request):
 	data = await request.json()
-	professor_id = ObjectId(data["_id"])
-	rating_id = ObjectId(data["rating"]["_id"])
-	if professor_id and rating_id:
+	professorID = ObjectId(data["professorID"])
+	rating = ObjectId(data["rating"])
+	try:
+		rating = ratingSchema(**rating)  # Validate and create RatingSchema instance
+	except ValidationError as e:
+		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
+	rating_id = ObjectId(rating["_id"])
+	if professorID and rating_id:
 		result = professor_collection.update_one(
-			{"_id": ObjectId(professor_id)},
+			{"_id": ObjectId(professorID)},
 			{"$pull": {"userRatings": {"_id": str(rating_id)}}}
 		)
 		if result.modified_count == 1:
