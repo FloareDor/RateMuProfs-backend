@@ -40,7 +40,7 @@ d = 		{
 d = ratingSchema(**d)
 print(d)
 
-print(env.get("ATLAS_URL"))
+# print(env.get("ATLAS_URL"))
 # MongoDB professor connection
 client = MongoClient(env.get("ATLAS_URL"))
 db = client["rate_my_professor"]
@@ -188,7 +188,7 @@ async def get_professors_by_school(school: str):
 		raise HTTPException(status_code=404, detail=f"No professors found for school: {school}")
 
 # Read Professor
-@app.post("/professors/get_professor", response_model=Dict[str, Any])
+@app.post("/professors/get_professor")
 async def get_professor(request: Request):
 	data = await request.json()
 	professorID = data["_id"]
@@ -198,6 +198,7 @@ async def get_professor(request: Request):
 			professor = professor_collection.find_one({"_id": ObjectId(professorID)})
 			if professor:
 				professor["_id"] = str(professor["_id"])
+				professor = professorSchema(**professor)
 				return professor
 		except Exception as e:
 			print(e)
