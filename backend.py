@@ -11,9 +11,6 @@ from pymongo import ReturnDocument
 import requests
 import httpx
 from os import environ as env
-from google.auth.exceptions import GoogleAuthError
-from google.oauth2 import id_token
-from google.auth.transport import requests
 from fastapi import HTTPException
 from models.schemas import ratingSchema, professorSchema, userSchema
 from pydantic import BaseModel, ValidationError
@@ -22,6 +19,7 @@ import jwt
 from starlette.requests import Request
 import datetime
 from datetime import timezone
+
 ENV_FILE = find_dotenv()
 if ENV_FILE:
 	load_dotenv(ENV_FILE)
@@ -42,8 +40,9 @@ d = 		{
 d = ratingSchema(**d)
 print(d)
 
+
 # MongoDB professor connection
-client = MongoClient("mongodb://localhost:27017")
+client = MongoClient(env.get("ATLAS_URL"))
 db = client["rate_my_professor"]
 professor_collection = db["professors"]
 professor_collection.delete_many({})
@@ -90,16 +89,16 @@ app.add_middleware(
 	allow_headers=["*"]
 )
 
-def verify_google_oauth_token(token: str):
-	try:
-		id_info = id_token.verify_oauth2_token(token, requests.Request())
-		return id_info
-	except GoogleAuthError:
-		raise HTTPException(status_code=401, detail="Invalid Google OAuth token")
+# def verify_google_oauth_token(token: str):
+# 	try:
+# 		id_info = id_token.verify_oauth2_token(token, requests.Request())
+# 		return id_info
+# 	except GoogleAuthError:
+# 		raise HTTPException(status_code=401, detail="Invalid Google OAuth token")
 
-async def encode_jwt(user_data, expire_time):
-	user_data["exp"] = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=expire_time)
-	return jwt.encode(user_data, JWT_SECRET, algorithm="HS256")
+async def encode_jwt(userData, expire_time):
+	userData["exp"] = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=expire_time)
+	return jwt.encode(userData, JWT_SECRET, algorithm="HS256")
 
 async def decode_jwt(encoded_jwt):
 	jwt.decode(encoded_jwt, JWT_SECRET, algorithms=["HS256"])
@@ -122,7 +121,7 @@ async def verify_user(request: Request):
 	if "error" in user_info:
 		return JSONResponse(user_info)
 	existing_user = user_collection.find_one({"$or": [{"email": user_info["email"]}, {"sub": user_info["sub"]}]})
-	user_data = {
+	userData = {
 		"sub": user_info.get("sub"),
 		"name": user_info.get("name"),
 		"email": user_info.get("email"),
@@ -134,22 +133,22 @@ async def verify_user(request: Request):
 		existing_user = dict(existing_user)
 		existing_user["_id"] = str(existing_user["_id"])
 		existing_user.pop("sub")
-		encoded_jwt = encode_jwt(user_data, expire_time=3600)
+		encoded_jwt = encode_jwt(userData, expire_time=3600)
 		print("User already exists:", existing_user)
-		return JSONResponse({"response": "User already exists", "user_data": existing_user, "token": encoded_jwt})
+		return JSONResponse({"response": "User already exists", "userData": existing_user, "token": encoded_jwt})
 	else:
-		result = user_collection.insert_one(user_data)
-		user_data.pop("sub")
-		user_data["_id"] = str(user_data["_id"])
-		encoded_jwt = encode_jwt(user_data, expire_time=3600)
+		result = user_collection.insert_one(userData)
+		userData.pop("sub")
+		userData["_id"] = str(userData["_id"])
+		encoded_jwt = encode_jwt(userData, expire_time=3600)
 		if result.acknowledged:
-			print(f"User added successfully: {user_data}")
-			return JSONResponse({"response": "User added successfully", "user_data": user_data, "token": encoded_jwt})
+			print(f"User added successfully: {userData}")
+			return JSONResponse({"response": "User added successfully", "userData": userData, "token": encoded_jwt})
 		else:
-			print(f"Failed to add user: {user_data}")
-			raise HTTPException(status_code=400, detail={"response": "Failed to add user", "user": user_data})
+			print(f"Failed to add user: {userData}")
+			raise HTTPException(status_code=400, detail={"response": "Failed to add user", "user": userData})
 
-user_data = {
+userData = {
     "sub": "user123",
     "name": "John Doe",
     "email": "john@example.com",
@@ -158,7 +157,7 @@ user_data = {
     "exp": datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=1)
 }
 
-print(jwt.encode(user_data, JWT_SECRET, algorithm="HS256"))
+print(jwt.encode(userData, JWT_SECRET, algorithm="HS256"))
 ########################### PROFESSOR CRUD ####################################
 
 # get all profs
@@ -176,7 +175,7 @@ async def get_all_professors():
 		raise HTTPException(status_code=404, detail="No professors found")
 	
 	
-@app.get("/professors/by_school/{school}", response_model=List[Dict[str, Any]])
+@app.get("/professors/by_school/{school}")
 async def get_professors_by_school(school: str):
 	professors = []
 	for professor in professor_collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
@@ -257,13 +256,13 @@ async def create_professor_rating(request: Request, authorization: str = Header(
 	if authorization is None:
 		raise HTTPException(status_code=500, detail="No Authorization Token Received")
 	match = re.match(r"Bearer (.+)", authorization)
-	
+	userData = {}
 	if match:
 		jwt_token = match.group(1)
 		print(jwt_token)
 		try:
-			user_data = decode_jwt(jwt_token)
-			print(user_data)
+			userData = decode_jwt(jwt_token)
+			print(userData)
 		except jwt.ExpiredSignatureError:
 			raise HTTPException(status_code=500, detail="Authorization Token Expired")
 		except Exception as e:
@@ -273,7 +272,7 @@ async def create_professor_rating(request: Request, authorization: str = Header(
 	
 	data = await request.json()
 	professorID = data["professorID"]
-	userID = data["userID"]
+	userID = userData["_id"]
 	rating = data["rating"]
 	rating["userID"] = userID
 	rating["_id"] = ObjectId()
@@ -313,6 +312,8 @@ async def create_professor_rating(request: Request, authorization: str = Header(
 # Get Professor Ratings
 @app.get("/professors/get_ratings", response_model=List[Dict[str, Any]])
 async def get_professor_ratings(request: Request):
+
+	
 	data = await request.json()
 	professorID = data["professorID"]
 	print(professor_collection.find_one({"_id": ObjectId(professorID)}))
@@ -327,7 +328,25 @@ async def get_professor_ratings(request: Request):
 
 # Update Professor Rating
 @app.post("/professors/update_rating", response_model=List[Dict[str, Any]])
-async def update_professor_rating(request: Request):
+async def update_professor_rating(request: Request, authorization: str = Header(None)):
+	if authorization is None:
+		raise HTTPException(status_code=500, detail="No Authorization Token Received")
+	match = re.match(r"Bearer (.+)", authorization)
+	userData = {}
+	if match:
+		jwt_token = match.group(1)
+		print(jwt_token)
+		try:
+			userData = decode_jwt(jwt_token)
+			print(userData)
+		except jwt.ExpiredSignatureError:
+			raise HTTPException(status_code=500, detail="Authorization Token Expired")
+		except Exception as e:
+			raise HTTPException(status_code=400, detail="Invalid Authorization Token Received", headers={"detail": str(e)})
+	else:
+		raise HTTPException(status_code=500, detail="No Authorization Token Received")
+	
+	userID = userData["_id"]
 	data = await request.json()
 	professorID = ObjectId(data["professorID"])
 	rating_id = ObjectId(data["rating"]["_id"])
@@ -344,7 +363,7 @@ async def update_professor_rating(request: Request):
 			count = 0
 			l = len(updated_ratings)
 			for i in range(l):
-				if ObjectId(updated_ratings[i]["_id"]) == rating_id:
+				if ObjectId(updated_ratings[i]["_id"]) == rating_id and updated_ratings[i]["userID"] == userID:
 					for key, value in updated_rating.items():
 						if key in updated_ratings[i] and key != "_id":
 							updated_ratings[i][key] = value
@@ -369,7 +388,25 @@ async def update_professor_rating(request: Request):
 
 # Delete Professor Rating
 @app.post("/professors/delete_rating", response_model=Dict[str, str])
-async def delete_professor_rating(request: Request):
+async def delete_professor_rating(request: Request, authorization: str = Header(None)):
+	if authorization is None:
+		raise HTTPException(status_code=500, detail="No Authorization Token Received")
+	match = re.match(r"Bearer (.+)", authorization)
+	userData = {}
+	if match:
+		jwt_token = match.group(1)
+		print(jwt_token)
+		try:
+			userData = decode_jwt(jwt_token)
+			print(userData)
+		except jwt.ExpiredSignatureError:
+			raise HTTPException(status_code=500, detail="Authorization Token Expired")
+		except Exception as e:
+			raise HTTPException(status_code=400, detail="Invalid Authorization Token Received", headers={"detail": str(e)})
+	else:
+		raise HTTPException(status_code=500, detail="No Authorization Token Received")
+	
+	userID = userData["_id"]
 	data = await request.json()
 	professorID = ObjectId(data["professorID"])
 	rating = ObjectId(data["rating"])
@@ -381,7 +418,7 @@ async def delete_professor_rating(request: Request):
 	if professorID and rating_id:
 		result = professor_collection.update_one(
 			{"_id": ObjectId(professorID)},
-			{"$pull": {"userRatings": {"_id": str(rating_id)}}}
+			{"$pull": {"userRatings": {"$and": [{"_id": str(rating_id)}, {"userID": userID}] }}}
 		)
 		if result.modified_count == 1:
 			return {"message": "Professor rating deleted successfully"}

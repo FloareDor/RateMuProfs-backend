@@ -1,11 +1,11 @@
 # 📁 requirements.txt -----
 fastapi
 uvicorn
-beanie
-motor
 pydantic
 pymongo
-flask>=2.0.3
-python-dotenv>=0.19.2
-authlib>=1.0
-requests>=2.27.1
+python-dotenv
+authlib
+requests
+httpx
+starlette
+bson
