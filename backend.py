@@ -40,7 +40,7 @@ d = 		{
 d = ratingSchema(**d)
 print(d)
 
-
+print(env.get("ATLAS_URL"))
 # MongoDB professor connection
 client = MongoClient(env.get("ATLAS_URL"))
 db = client["rate_my_professor"]
