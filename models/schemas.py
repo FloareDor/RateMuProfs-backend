@@ -9,9 +9,9 @@ class ratingSchema(BaseModel):
     responsiveness: Optional[float] = None
     lod: Optional[float] = None
     course: Optional[str] = None
-    date: Optional[datetime] = None  # You can use the datetime module to work with date and time
+    date: Optional[datetime] = None 
     helpfulness: Optional[float] = None
-    feedback: Optional[str] = None # Making feedback field optional
+    feedback: Optional[str] = None
     
 
 class professorSchema(BaseModel):
@@ -31,7 +31,6 @@ class professorSchema(BaseModel):
     linkedin_link: Optional[str] = None
     googleScholar_link: Optional[str] = None
     muProfile_link: Optional[str] = None
-
 
 class userSchema(BaseModel):
     _id: Optional[str] = None

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Depends, status
+from fastapi import FastAPI, HTTPException, Request, Depends, status, Response
 from typing import Dict, Any, List
 from pymongo import MongoClient
 from bson import ObjectId
@@ -42,7 +42,7 @@ print(d)
 
 # print(env.get("ATLAS_URL"))
 # MongoDB professor connection
-client = MongoClient(env.get("ATLAS_URL"))
+client = MongoClient('localhost', 27017)
 db = client["rate_my_professor"]
 professor_collection = db["professors"]
 professor_collection.delete_many({})
@@ -96,13 +96,12 @@ app.add_middleware(
 # 	except GoogleAuthError:
 # 		raise HTTPException(status_code=401, detail="Invalid Google OAuth token")
 
-async def encode_jwt(userData, expire_time):
-	userData["exp"] = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=expire_time)
-	return jwt.encode(userData, JWT_SECRET, algorithm="HS256")
+async def encode_jwt(userD, expire_time):
+	userD["exp"] = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=expire_time)
+	return jwt.encode(userD, JWT_SECRET, algorithm="HS256")
 
 async def decode_jwt(encoded_jwt):
 	jwt.decode(encoded_jwt, JWT_SECRET, algorithms=["HS256"])
-
 
 # print(verify_google_oauth_token(str("ya29.a0AfB_byBLRN6R-1eVjKyHiEqxFUcXPJNEWyR-5ogRThC61u0eWLOz2kMIiZ8uyUbXPo1kfHOlypw_IC0pc7EmCF7CF_AxkP68d5DvRBxKQedMf-W5_2Ed2y7KcJUJUr05dZc_qPFAgxZUSwxK5P_5RYaN8BQ4b_Gh99pGRSUaCgYKAbsSARISFQHsvYls3fcdIqOBWTudbOi-C-jAYw0174")))
 @app.get("/")
@@ -133,28 +132,40 @@ async def verify_user(request: Request):
 		existing_user = dict(existing_user)
 		existing_user["_id"] = str(existing_user["_id"])
 		existing_user.pop("sub")
-		encoded_jwt = encode_jwt(userData, expire_time=3600)
+		encoded_jwt = await encode_jwt(userData, expire_time=3600)
+		existing_user.pop("exp")
 		print("User already exists:", existing_user)
-		return JSONResponse({"response": "User already exists", "userData": existing_user, "token": encoded_jwt})
+		response_data = {
+			"message": "User already exists",
+			"userData": existing_user
+		}
+		response = JSONResponse(content=response_data)
+		response.headers["Authorization"] = f"Bearer {encoded_jwt}"
+		return response
 	else:
 		result = user_collection.insert_one(userData)
 		userData.pop("sub")
 		userData["_id"] = str(userData["_id"])
-		encoded_jwt = encode_jwt(userData, expire_time=3600)
+		encoded_jwt = await encode_jwt(userData, expire_time=3600)
+		# print(1111111111111111111)
+		userData.pop("exp")
+		# print(userData)
+		# print(1111111111111111111)
 		if result.acknowledged:
-			print(f"User added successfully: {userData}")
-			return JSONResponse({"response": "User added successfully", "userData": userData, "token": encoded_jwt})
+			response = JSONResponse({"message": "User added successfully", "userData": userData })
+			response.headers["Authorization"] = f"Bearer {encoded_jwt}"
+			return response
 		else:
 			print(f"Failed to add user: {userData}")
-			raise HTTPException(status_code=400, detail={"response": "Failed to add user", "user": userData})
+			raise HTTPException(status_code=400, detail={"response": "Failed to add user", "userData": userData})
 
 userData = {
-    "sub": "user123",
-    "name": "John Doe",
-    "email": "john@example.com",
-    "picture": "https://example.com/profile.jpg",
-    "ratings": [],
-    "exp": datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=1)
+	"sub": "user123",
+	"name": "John Doe",
+	"email": "john@example.com",
+	"picture": "https://example.com/profile.jpg",
+	"ratings": [],
+	"exp": datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=1)
 }
 
 print(jwt.encode(userData, JWT_SECRET, algorithm="HS256"))
