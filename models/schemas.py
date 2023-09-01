@@ -19,7 +19,7 @@ class professorSchema(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     rating: Optional[float] = 5
-    lod: Optional[float] = 2.5
+    teachingQuality: Optional[float] = 2.5
     courses: Optional[List[str]] = []
     dept: Optional[str] = None
     school: Optional[str] = None

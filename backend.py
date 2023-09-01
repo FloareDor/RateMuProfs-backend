@@ -8,7 +8,6 @@ from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 import json
 from pymongo import ReturnDocument
-import requests
 import httpx
 from os import environ as env
 from fastapi import HTTPException
@@ -20,11 +19,14 @@ from starlette.requests import Request
 import datetime
 from datetime import timezone
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 ENV_FILE = find_dotenv()
 if ENV_FILE:
 	load_dotenv(ENV_FILE)
 JWT_SECRET = env.get("JWT_SECRET")
-print(JWT_SECRET)
 
 d = 		{
 			"courseQuality": 4,
@@ -61,6 +63,7 @@ def insertSample_data(filename):
 	for prof in data:
 		# Insert the document into the professor_collection
 		prof["_id"] = ObjectId(prof["_id"])
+		prof["rating"] = 5
 		insert_result = professor_collection.insert_one(prof)
 		# Check if the insertion was successful
 		if insert_result.acknowledged:
@@ -77,8 +80,12 @@ def insertSample_data(filename):
 sampleFilename = "prof_data.json"
 insertSample_data(sampleFilename)
 
+limiter = Limiter(key_func=get_remote_address, config_filename=".rate")
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+print(111111111111111111)
 origins = ["*"]
 
 app.add_middleware(
@@ -89,13 +96,6 @@ app.add_middleware(
 	allow_headers=["*"]
 )
 
-# def verify_google_oauth_token(token: str):
-# 	try:
-# 		id_info = id_token.verify_oauth2_token(token, requests.Request())
-# 		return id_info
-# 	except GoogleAuthError:
-# 		raise HTTPException(status_code=401, detail="Invalid Google OAuth token")
-
 async def encode_jwt(userD, expire_time):
 	userD["exp"] = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=expire_time)
 	return jwt.encode(userD, JWT_SECRET, algorithm="HS256")
@@ -105,10 +105,12 @@ async def decode_jwt(encoded_jwt):
 
 # print(verify_google_oauth_token(str("ya29.a0AfB_byBLRN6R-1eVjKyHiEqxFUcXPJNEWyR-5ogRThC61u0eWLOz2kMIiZ8uyUbXPo1kfHOlypw_IC0pc7EmCF7CF_AxkP68d5DvRBxKQedMf-W5_2Ed2y7KcJUJUr05dZc_qPFAgxZUSwxK5P_5RYaN8BQ4b_Gh99pGRSUaCgYKAbsSARISFQHsvYls3fcdIqOBWTudbOi-C-jAYw0174")))
 @app.get("/")
-async def main():
+@limiter.limit("5/minute")
+async def main(request: Request):
 	return {"message": "Hello World"}
 
 @app.post("/verify_user")
+@limiter.limit("12/minute")
 async def verify_user(request: Request):
 	data = await request.json()
 	token = data['accessToken']
@@ -173,7 +175,8 @@ print(jwt.encode(userData, JWT_SECRET, algorithm="HS256"))
 
 # get all profs
 @app.get("/professors", response_model=List[Dict[str, Any]])
-async def get_all_professors():
+@limiter.limit("30/minute")
+async def get_all_professors(request: Request):
 	professors = []
 	for professor in professor_collection.find().sort("name"):
 		# Convert the ObjectId to string representation before returning
@@ -187,7 +190,8 @@ async def get_all_professors():
 	
 	
 @app.get("/professors/by_school/{school}")
-async def get_professors_by_school(school: str):
+@limiter.limit("30/minute")
+async def get_professors_by_school(request: Request, school: str):
 	professors = []
 	for professor in professor_collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
 		# Convert the ObjectId to string representation before returning
@@ -200,6 +204,7 @@ async def get_professors_by_school(school: str):
 
 # Read Professor
 @app.post("/professors/get_professor")
+@limiter.limit("30/minute")
 async def get_professor(request: Request):
 	data = await request.json()
 	professorID = data["_id"]
@@ -263,7 +268,8 @@ async def delete_professor(request: Request):
 
 
 # Add Professor Rating
-@app.post("/professors/add_rating", response_model=Dict[str, Any])
+@app.post("/professors/add_rating")
+@limiter.limit("12/minute")
 async def create_professor_rating(request: Request, authorization: str = Header(None)):
 	if authorization is None:
 		raise HTTPException(status_code=500, detail="No Authorization Token Received")
@@ -323,6 +329,7 @@ async def create_professor_rating(request: Request, authorization: str = Header(
 
 # Get Professor Ratings
 @app.get("/professors/get_ratings", response_model=List[Dict[str, Any]])
+@limiter.limit("30/minute")
 async def get_professor_ratings(request: Request):
 
 	
@@ -340,6 +347,7 @@ async def get_professor_ratings(request: Request):
 
 # Update Professor Rating
 @app.post("/professors/update_rating", response_model=List[Dict[str, Any]])
+@limiter.limit("12/minute")
 async def update_professor_rating(request: Request, authorization: str = Header(None)):
 	if authorization is None:
 		raise HTTPException(status_code=500, detail="No Authorization Token Received")
@@ -400,6 +408,7 @@ async def update_professor_rating(request: Request, authorization: str = Header(
 
 # Delete Professor Rating
 @app.post("/professors/delete_rating", response_model=Dict[str, str])
+@limiter.limit("12/minute")
 async def delete_professor_rating(request: Request, authorization: str = Header(None)):
 	if authorization is None:
 		raise HTTPException(status_code=500, detail="No Authorization Token Received")
