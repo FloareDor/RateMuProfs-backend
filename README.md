@@ -12,6 +12,6 @@ Backend for the rate my professor website
 2. Run the backend script
 
 	```bat
-	uvicorn async_backend:app --host 127.0.0.1 --port 8000
+	uvicorn backend:app --host 127.0.0.1 --port 8000
 	```
 

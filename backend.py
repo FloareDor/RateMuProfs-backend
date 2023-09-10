@@ -16,9 +16,12 @@ from pydantic import BaseModel, ValidationError
 from dotenv import find_dotenv, load_dotenv
 import jwt
 from starlette.requests import Request
+
+from profanity_check import predict_prob
+from fuzzywuzzy import fuzz
+
 import datetime
 from datetime import timezone
-
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -29,18 +32,22 @@ if ENV_FILE:
 JWT_SECRET = env.get("JWT_SECRET")
 
 d = 		{
-			"courseQuality": 4,
+			"professorID": "x",
+			"userID": "xx",
+			"overallRating": 5,
 			"responsiveness": 5,
-			"lod": 4,
+			"teachingQuality": 4,
+			"helpfulness": 3,
 			"course": "Computer Organization",
 			"date": "2023-05-28T09:59:53.346Z",
-			"helpfulness": 3,
 			"feedback": "good prof",
 			"_id": "647325b57231c23c45077152",
 		}
 
-d = ratingSchema(**d)
-print(d)
+# try:
+# 	b = ratingSchema(**d)
+# except:
+# 	exit()
 
 # print(env.get("ATLAS_URL"))
 # MongoDB professor connection
@@ -64,6 +71,9 @@ def insertSample_data(filename):
 		# Insert the document into the professor_collection
 		prof["_id"] = ObjectId(prof["_id"])
 		prof["rating"] = 5
+		prof["teachingQuality"] = 5
+		prof["userRatings"] = []
+		prof["totRatings"] = 0
 		insert_result = professor_collection.insert_one(prof)
 		# Check if the insertion was successful
 		if insert_result.acknowledged:
@@ -93,7 +103,8 @@ app.add_middleware(
 	allow_origins=origins,
 	allow_credentials=True,
 	allow_methods=["*"],
-	allow_headers=["*"]
+	allow_headers=["*"],
+	expose_headers=["Authorization"],
 )
 
 async def encode_jwt(userD, expire_time):
@@ -101,10 +112,60 @@ async def encode_jwt(userD, expire_time):
 	return jwt.encode(userD, JWT_SECRET, algorithm="HS256")
 
 async def decode_jwt(encoded_jwt):
-	jwt.decode(encoded_jwt, JWT_SECRET, algorithms=["HS256"])
+	return jwt.decode(encoded_jwt, JWT_SECRET, algorithms=["HS256"])
+
+offensive_hindi_words = [
+		"bahenchod", "behenchod", "bhenchod", "bhenchodd", "b.c.", "bc", "bakchod", "bakchodd", 
+		"bakchodi", "bevda", "bewda", "bevdey", "bewday", "bevakoof", "bevkoof", "bevkuf", "bewakoof", 
+		"bewkoof", "bewkuf", "bhadua", "bhaduaa", "bhadva", "bhadvaa", "bhadwa", "bhadwaa", "bhosada", 
+		"bhosda", "bhosdaa", "bhosdike", "bhonsdike", "bhosdiki", "bhosdiwala", "bhosdiwale", 
+		"bhosadchodal", "bhosadchod", "bhosadchodal", "bhosadchod", "babbe", "babbey", "bube", "bubey", 
+		"bur", "burr", "buurr", "buur", "charsi", "chooche", "choochi", "chuchi", "chhod", "chod", "chodd", 
+		"chudne", "chudney", "chudwa", "chudwaa", "chudwane", "chudwaane", "chaat", "choot", "chut", 
+		"chute", "chutia", "chutiya", "chutiye", "dalaal", "dalal", "dalle", "dalley", "fattu", "gadha", 
+		"gadhe", "gadhalund", "gaand", "gand", "gandu", "gandfat", "gandfut", "gandiya", "gandiye", 
+		"gote", "gotey", "gotte", "hag", "haggu", "hagne", "hagney", "harami", "haramjada", 
+		"haraamjaada", "haramzyada", "haraamzyaada", "haraamjaade", "haraamzaade", "haraamkhor", "haramkhor", 
+		"jhat", "jhaat", "jhaatu", "jhatu", "kutta", "kutte", "kuttey", "kutia", "kutiya", "kuttiya", 
+		"kutti", "landi", "landy", "laude", "laudey", "laura", "lora", "lauda", "ling", "loda", "lode", 
+		"lund", "launda", "lounde", "laundey", "laundi", "loundi", "laundiya", "loundiya", "lulli", 
+		"maar", "maro", "marunga", "madarchod", "madarchodd", "madarchood", "madarchoot", "madarchut", "mamme", "mammey", "moot", "mut", "mootne", "mutne", "mooth", "muth", "nunni", 
+		"nunnu", "paaji", "paji", "pesaab", "pesab", "peshaab", "peshab", "pilla", "pillay", "pille", 
+		"pilley", "pisaab", "pisab", "pkmkb", "porkistan", "raand", "rand", "randi", "randy", "suar", 
+		"tatte", "tatti", "tatty", "ullu"
+	]
+
+async def contains_hindi_offensive_word(text):
+
+	for offensiveWord in offensive_hindi_words:
+		for word in text.lower().split():
+			if fuzz.ratio(offensiveWord, word) > 75:  # Adjust the similarity threshold as needed
+				print(fuzz.ratio(offensiveWord, word), word, offensiveWord)
+				return True
+	return False
+
+async def authorize(authorization):
+	if authorization is None:
+		raise HTTPException(status_code=401, detail="No Authorization Token Received")
+	match = re.match(r"Bearer (.+)", authorization)
+	userData = {}
+	if match:
+		jwt_token = match.group(1)
+		print(jwt_token)
+		try:
+			userData = await decode_jwt(jwt_token)
+			print(userData)
+			return userData
+		except jwt.ExpiredSignatureError:
+			raise HTTPException(status_code=401, detail="Authorization Token Expired")
+		except Exception as e:
+			raise HTTPException(status_code=401, detail="Invalid Authorization Token Received", headers={"detail": str(e)})
+		
+	else:
+		raise HTTPException(status_code=401, detail="No Authorization Token Received")
 
 # print(verify_google_oauth_token(str("ya29.a0AfB_byBLRN6R-1eVjKyHiEqxFUcXPJNEWyR-5ogRThC61u0eWLOz2kMIiZ8uyUbXPo1kfHOlypw_IC0pc7EmCF7CF_AxkP68d5DvRBxKQedMf-W5_2Ed2y7KcJUJUr05dZc_qPFAgxZUSwxK5P_5RYaN8BQ4b_Gh99pGRSUaCgYKAbsSARISFQHsvYls3fcdIqOBWTudbOi-C-jAYw0174")))
-@app.get("/")
+@app.get("/home")
 @limiter.limit("5/minute")
 async def main(request: Request):
 	return {"message": "Hello World"}
@@ -120,7 +181,7 @@ async def verify_user(request: Request):
 		response = await client.get('https://www.googleapis.com/oauth2/v3/userinfo', headers=headers)
 		user_info = response.json()
 	if "error" in user_info:
-		return JSONResponse(user_info)
+		return JSONResponse(user_info, status_code=400)
 	existing_user = user_collection.find_one({"$or": [{"email": user_info["email"]}, {"sub": user_info["sub"]}]})
 	userData = {
 		"sub": user_info.get("sub"),
@@ -133,33 +194,38 @@ async def verify_user(request: Request):
 	if existing_user:
 		existing_user = dict(existing_user)
 		existing_user["_id"] = str(existing_user["_id"])
-		existing_user.pop("sub")
+		if "sub" in existing_user:
+			existing_user.pop("sub")
 		encoded_jwt = await encode_jwt(userData, expire_time=3600)
-		existing_user.pop("exp")
+		if "exp" in existing_user:
+			existing_user.pop("exp")
 		print("User already exists:", existing_user)
 		response_data = {
 			"message": "User already exists",
 			"userData": existing_user
 		}
-		response = JSONResponse(content=response_data)
+		response = JSONResponse(content=response_data, status_code=200)
 		response.headers["Authorization"] = f"Bearer {encoded_jwt}"
 		return response
 	else:
+		userData["_id"] = ObjectId()
 		result = user_collection.insert_one(userData)
-		userData.pop("sub")
+		if "sub" in userData:
+			userData.pop("sub")
 		userData["_id"] = str(userData["_id"])
 		encoded_jwt = await encode_jwt(userData, expire_time=3600)
 		# print(1111111111111111111)
-		userData.pop("exp")
+		if "exp" in userData:
+			userData.pop("exp")
 		# print(userData)
 		# print(1111111111111111111)
 		if result.acknowledged:
-			response = JSONResponse({"message": "User added successfully", "userData": userData })
+			response = JSONResponse({"message": "User added successfully", "userData": userData }, status_code=200)
 			response.headers["Authorization"] = f"Bearer {encoded_jwt}"
 			return response
 		else:
 			print(f"Failed to add user: {userData}")
-			raise HTTPException(status_code=400, detail={"response": "Failed to add user", "userData": userData})
+			raise HTTPException(status_code=500, detail={"response": "Failed to add user", "userData": userData})
 
 userData = {
 	"sub": "user123",
@@ -183,8 +249,9 @@ async def get_all_professors(request: Request):
 		professor["_id"] = str(professor["_id"])
 		professors.append(professor)
 	if professors:
+		response = JSONResponse(professors, status_code=200)
 		# time.sleep(10)
-		return professors
+		return response
 	else:
 		raise HTTPException(status_code=404, detail="No professors found")
 	
@@ -198,7 +265,8 @@ async def get_professors_by_school(request: Request, school: str):
 		professor["_id"] = str(professor["_id"])
 		professors.append(professor)
 	if professors:
-		return professors
+		response = JSONResponse(professors, status_code=200)
+		return response
 	else:
 		raise HTTPException(status_code=404, detail=f"No professors found for school: {school}")
 
@@ -214,8 +282,9 @@ async def get_professor(request: Request):
 			professor = professor_collection.find_one({"_id": ObjectId(professorID)})
 			if professor:
 				professor["_id"] = str(professor["_id"])
-				professor = professorSchema(**professor)
-				return professor
+				# validation = professorSchema(**professor)
+				response = JSONResponse(professor, status_code=200)
+				return response
 		except Exception as e:
 			print(e)
 			raise HTTPException(status_code=404, detail="Professor not found")
@@ -249,7 +318,6 @@ async def update_professor(request: Request):
 				return professor
 	raise HTTPException(status_code=404, detail="Professor not found")
 
-
 # Delete Professor
 @app.delete("/professors/delete_professor", response_model=Dict[str, str])
 async def delete_professor(request: Request):
@@ -259,72 +327,138 @@ async def delete_professor(request: Request):
 	if professorID:
 		result = await professor_collection.delete_one({"_id": professorID})
 		if result.deleted_count == 1:
-			return {"message": "Professor deleted successfully"}
+			response = JSONResponse({"message": "Professor deleted successfully"}, status_code=200)
+			return response
+	raise HTTPException(status_code=404, detail="Professor not found")
+
+@app.post("/professors/get_courses")
+@limiter.limit("30/minute")
+async def get_courses(request: Request, authorization: str = Header(None)):
+	try:
+		await authorize(authorization=authorization)
+	except HTTPException as http_exception:
+		return JSONResponse({"detail": http_exception.detail}, status_code=http_exception.status_code)
+	
+	data = await request.json()
+	professorID = data["professorID"]
+	print(professorID)
+	if professorID:
+		try:
+			professor = professor_collection.find_one({"_id": ObjectId(professorID)})
+			if professor:
+				if "courses" in professor:
+					response = JSONResponse({"courses": professor["courses"]}, status_code=200)
+					return response
+				else:
+					raise HTTPException(status_code=404, detail="No course data found for this professor")
+		except Exception as e:
+			print(e)
+			raise HTTPException(status_code=404, detail="Professor not found")
 	raise HTTPException(status_code=404, detail="Professor not found")
 
 
-
 ########################### RATING CRUD ####################################
-
 
 # Add Professor Rating
 @app.post("/professors/add_rating")
 @limiter.limit("12/minute")
 async def create_professor_rating(request: Request, authorization: str = Header(None)):
-	if authorization is None:
-		raise HTTPException(status_code=500, detail="No Authorization Token Received")
-	match = re.match(r"Bearer (.+)", authorization)
 	userData = {}
-	if match:
-		jwt_token = match.group(1)
-		print(jwt_token)
-		try:
-			userData = decode_jwt(jwt_token)
-			print(userData)
-		except jwt.ExpiredSignatureError:
-			raise HTTPException(status_code=500, detail="Authorization Token Expired")
-		except Exception as e:
-			raise HTTPException(status_code=400, detail="Invalid Authorization Token Received", headers={"detail": str(e)})
-	else:
-		raise HTTPException(status_code=500, detail="No Authorization Token Received")
-	
+	try:
+		# Authorize the request
+		userData = await authorize(authorization=authorization)
+	except HTTPException as http_exception:
+		# Handle authorization errors
+		return JSONResponse({"detail": http_exception.detail}, status_code=http_exception.status_code)
+
+	# Parse request data
 	data = await request.json()
 	professorID = data["professorID"]
 	userID = userData["_id"]
 	rating = data["rating"]
+	rating["professorID"] = professorID
 	rating["userID"] = userID
-	rating["_id"] = ObjectId()
+	rating["_id"] = str(ObjectId())
+	rating["overallRating"] = 0.0
 
 	try:
-		rating = ratingSchema(**rating)  # Validate and create RatingSchema instance
-	except ValidationError as e:
+		# Validate and create a RatingSchema instance
+		x = ratingSchema(**rating)
+	except Exception as e:
+		# Handle invalid rating data
 		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
+	
+	subRatings = ["courseQuality", "helpfulness", "teachingQuality", "responsiveness"]
+	for key, value in rating.items():
+		if value is not None and key in subRatings:
+			rating["overallRating"] += value
+	rating["overallRating"] = rating["overallRating"] / 4
+	
+	# Check for foul language
+	if predict_prob([rating["feedback"]]) > 0.42 or await contains_hindi_offensive_word(rating["feedback"]):
+		raise HTTPException(status_code=422, detail="Warning: Feedback contains inappropriate language.")
+
 	try:
+		# Retrieve existing user data
 		existing_user = user_collection.find_one({"_id": ObjectId(userID)})
 	except:
-		raise HTTPException(status_code=500, detail="Wrong userID format")
+		raise HTTPException(status_code=400, detail="Wrong userID format")
+	
 	if not existing_user:
-		raise HTTPException(status_code=500, detail="User not found")
+		raise HTTPException(status_code=404, detail="User not found")
+	
 	if professorID and rating:
 		professor_object_id = ObjectId(professorID)
-		
+
+		# Check if the user has already rated this professor for this course
+		existing_rating = rating_collection.find_one(
+			{"professorID": professorID, "userID": userID, "course": rating["course"]}
+		)
+		if existing_rating:
+			raise HTTPException(status_code=409, detail="You have already rated this professor for this course")
 		try:
+			# Update professor ratings with the new rating
 			result = professor_collection.update_one(
 				{"_id": professor_object_id},
 				{"$push": {"userRatings": rating}}
 			)
 		except Exception as e:
-			raise HTTPException(status_code=500, detail="Failed to update professor ratings")
+			raise HTTPException(status_code=500, detail=f"Failed to update professor ratings. Error: {e}")
 
 		if result.modified_count == 1:
 			updated_professor = professor_collection.find_one({"_id": professor_object_id})
 			if updated_professor:
-				updated_professor["_id"] = str(updated_professor["_id"])
-				for i in range(len(updated_professor["userRatings"])):
-					updated_professor["userRatings"][i]["_id"] = str(updated_professor["userRatings"][i]["_id"])
-				return updated_professor
+				# Update professor values
+				updated_professor["helpfulness"] = ((updated_professor["helpfulness"] * updated_professor["totRatings"]) + rating["helpfulness"]) / (updated_professor["totRatings"] + 1)
+				updated_professor["rating"] = ((updated_professor["rating"] * updated_professor["totRatings"]) + rating["overallRating"]) / (updated_professor["totRatings"] + 1)
+				updated_professor["courseQuality"] = ((updated_professor["courseQuality"] * updated_professor["totRatings"]) + rating["courseQuality"]) / (updated_professor["totRatings"] + 1)
+				updated_professor["teachingQuality"] = ((updated_professor["teachingQuality"] * updated_professor["totRatings"]) + rating["teachingQuality"]) / (updated_professor["totRatings"] + 1)
+				updated_professor["responsiveness"] = ((updated_professor["responsiveness"] * updated_professor["totRatings"]) + rating["responsiveness"]) / (updated_professor["totRatings"] + 1)
+
+				# Round off values to one decimal
+				updated_professor["helpfulness"] = round(updated_professor["helpfulness"], 1)
+				updated_professor["rating"] = round(updated_professor["rating"], 1)
+				updated_professor["courseQuality"] = round(updated_professor["courseQuality"], 1)
+				updated_professor["teachingQuality"] = round(updated_professor["teachingQuality"], 1)
+				updated_professor["responsiveness"] = round(updated_professor["responsiveness"], 1)
+
+				updated_professor["totRatings"] += 1
+
+				# Update professor data
+				result = professor_collection.update_one(
+					{"_id": professor_object_id},
+					{"$set": updated_professor},
+				)
+				# Update rating collection
+				inserted_rating = rating_collection.insert_one(rating)
+				if inserted_rating.acknowledged and result is not None:
+					response = JSONResponse({"response": "Rating created successfully"}, status_code=201)
+					return response
+				else:
+					raise HTTPException(status_code=500, detail="Failed to add rating")
 			else:
 				raise HTTPException(status_code=404, detail="Professor not found")
+	
 	raise HTTPException(status_code=400, detail="Invalid input data")
 
 # Get Professor Ratings
@@ -341,7 +475,8 @@ async def get_professor_ratings(request: Request):
 		if professor and "userRatings" in professor:
 			for i in range(len(professor["userRatings"])):
 				professor["userRatings"][i]["_id"] = str(professor["userRatings"][i]["_id"])
-			return professor["userRatings"]
+			response = JSONResponse(professor["userRatings"], status_code=200)
+			return response
 		
 	raise HTTPException(status_code=404, detail="Professor not found or no ratings available")
 
@@ -357,14 +492,14 @@ async def update_professor_rating(request: Request, authorization: str = Header(
 		jwt_token = match.group(1)
 		print(jwt_token)
 		try:
-			userData = decode_jwt(jwt_token)
+			userData = await decode_jwt(jwt_token)
 			print(userData)
 		except jwt.ExpiredSignatureError:
-			raise HTTPException(status_code=500, detail="Authorization Token Expired")
+			raise HTTPException(status_code=401, detail="Authorization Token Expired")
 		except Exception as e:
-			raise HTTPException(status_code=400, detail="Invalid Authorization Token Received", headers={"detail": str(e)})
+			raise HTTPException(status_code=401, detail="Invalid Authorization Token Received", headers={"detail": str(e)})
 	else:
-		raise HTTPException(status_code=500, detail="No Authorization Token Received")
+		raise HTTPException(status_code=401, detail="No Authorization Token Received")
 	
 	userID = userData["_id"]
 	data = await request.json()
@@ -373,7 +508,7 @@ async def update_professor_rating(request: Request, authorization: str = Header(
 	updated_rating = data["rating"]
 	try:
 		update_rating = ratingSchema(**update_rating)  # Validate and create RatingSchema instance
-	except ValidationError as e:
+	except Exception as e:
 		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
 	
 	if professorID and rating_id and updated_rating:
@@ -401,7 +536,8 @@ async def update_professor_rating(request: Request, authorization: str = Header(
 			if result and "userRatings" in result:
 				for i in range(len(result["userRatings"])):
 					result["userRatings"][i]["_id"] = str(result["userRatings"][i]["_id"])
-				return result["userRatings"]
+				response = JSONResponse(professor["userRatings"], status_code=200)
+				return response
 	
 	raise HTTPException(status_code=404, detail="Professor rating not found")
 
@@ -433,7 +569,7 @@ async def delete_professor_rating(request: Request, authorization: str = Header(
 	rating = ObjectId(data["rating"])
 	try:
 		rating = ratingSchema(**rating)  # Validate and create RatingSchema instance
-	except ValidationError as e:
+	except Exception as e:
 		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
 	rating_id = ObjectId(rating["_id"])
 	if professorID and rating_id:
@@ -442,5 +578,6 @@ async def delete_professor_rating(request: Request, authorization: str = Header(
 			{"$pull": {"userRatings": {"$and": [{"_id": str(rating_id)}, {"userID": userID}] }}}
 		)
 		if result.modified_count == 1:
-			return {"message": "Professor rating deleted successfully"}
+			response = JSONResponse({"message": "Professor rating deleted successfully"}, status_code=200)
+			return response
 	raise HTTPException(status_code=404, detail="Professor rating not found")

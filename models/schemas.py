@@ -4,15 +4,16 @@ from datetime import datetime
 
 class ratingSchema(BaseModel):
     _id: Optional[str] = None
-    userID: Optional[str] = None
-    courseQuality: Optional[float] = None
-    responsiveness: Optional[float] = None
-    lod: Optional[float] = None
-    course: Optional[str] = None
-    date: Optional[datetime] = None 
-    helpfulness: Optional[float] = None
+    professorID: str
+    userID: str
+    overallRating: Optional[float] = None
+    courseQuality: float
+    responsiveness: float
+    teachingQuality: float
+    helpfulness: float
+    course: str
+    date: Optional[str] = None 
     feedback: Optional[str] = None
-    
 
 class professorSchema(BaseModel):
     _id: Optional[str] = None
