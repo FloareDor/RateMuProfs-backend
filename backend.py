@@ -51,7 +51,7 @@ d = 		{
 
 # print(env.get("ATLAS_URL"))
 # MongoDB professor connection
-client = MongoClient('localhost', 27017)
+client = MongoClient('mongodb://localhost:27017/?maxPoolSize=100')
 db = client["rate_my_professor"]
 professor_collection = db["professors"]
 professor_collection.delete_many({})
@@ -74,6 +74,9 @@ def insertSample_data(filename):
 		prof["teachingQuality"] = 5
 		prof["userRatings"] = []
 		prof["totRatings"] = 0
+		prof["helpfulness"] = 5
+		prof["courseQuality"] = 5
+		prof["responsiveness"] = 5
 		insert_result = professor_collection.insert_one(prof)
 		# Check if the insertion was successful
 		if insert_result.acknowledged:
@@ -154,11 +157,26 @@ async def authorize(authorization):
 		print(jwt_token)
 		try:
 			userData = await decode_jwt(jwt_token)
+			existing_user_id = None
+			try:
+				existing_user_id = user_collection.find_one(
+					{"sub": userData["sub"]},  # Query condition
+					{"_id": 1}  # Projection: Include only the "_id" field
+				)
+			except Exception as e:
+				print("USER NOT FOUND")
+				print(e)
+				pass
+			if existing_user_id is not None:
+				userData["_id"] = str(existing_user_id["_id"])
+				print("YOOOOOOOOOOOOOO")
+				print(userData["_id"])
+				print("YOPOOOOOOOOOOOOOOO")
 			print(userData)
 			return userData
 		except jwt.ExpiredSignatureError:
 			raise HTTPException(status_code=401, detail="Authorization Token Expired")
-		except Exception as e:
+		except Exception as e: 
 			raise HTTPException(status_code=401, detail="Invalid Authorization Token Received", headers={"detail": str(e)})
 		
 	else:
@@ -380,11 +398,12 @@ async def create_professor_rating(request: Request, authorization: str = Header(
 	rating["userID"] = userID
 	rating["_id"] = str(ObjectId())
 	rating["overallRating"] = 0.0
+	
 
 	try:
 		# Validate and create a RatingSchema instance
 		x = ratingSchema(**rating)
-	except Exception as e:
+	except ValidationError as e:
 		# Handle invalid rating data
 		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
 	
@@ -508,7 +527,7 @@ async def update_professor_rating(request: Request, authorization: str = Header(
 	updated_rating = data["rating"]
 	try:
 		update_rating = ratingSchema(**update_rating)  # Validate and create RatingSchema instance
-	except Exception as e:
+	except ValidationError as e:
 		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
 	
 	if professorID and rating_id and updated_rating:
@@ -568,8 +587,8 @@ async def delete_professor_rating(request: Request, authorization: str = Header(
 	professorID = ObjectId(data["professorID"])
 	rating = ObjectId(data["rating"])
 	try:
-		rating = ratingSchema(**rating)  # Validate and create RatingSchema instance
-	except Exception as e:
+		validation = ratingSchema(**rating)  # Validate and create RatingSchema instance
+	except ValidationError as e:
 		raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
 	rating_id = ObjectId(rating["_id"])
 	if professorID and rating_id:
