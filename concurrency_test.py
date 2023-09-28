@@ -7,8 +7,8 @@ async def fetch(session, url):
         return await response.json()
 
 async def main():
-    url = "http://localhost:8000/professors"  # Replace with your API endpoint
-    num_concurrent_requests = 50  # Adjust the number of concurrent requests
+    url = "http://localhost:8000/professors/by_school/ecsoe"  # Replace with your API endpoint
+    num_concurrent_requests = 500  # Adjust the number of concurrent requests
     tasks = []
 
     async with aiohttp.ClientSession() as session:

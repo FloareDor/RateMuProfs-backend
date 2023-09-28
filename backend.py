@@ -135,14 +135,14 @@ offensive_hindi_words = [
 		"maar", "maro", "marunga", "madarchod", "madarchodd", "madarchood", "madarchoot", "madarchut", "mamme", "mammey", "moot", "mut", "mootne", "mutne", "mooth", "muth", "nunni", 
 		"nunnu", "paaji", "paji", "pesaab", "pesab", "peshaab", "peshab", "pilla", "pillay", "pille", 
 		"pilley", "pisaab", "pisab", "pkmkb", "porkistan", "raand", "rand", "randi", "randy", "suar", 
-		"tatte", "tatti", "tatty", "ullu"
+		"tatte", "tatti", "tatty", "ullu", "chewtiya"
 	]
 
 async def contains_hindi_offensive_word(text):
 
 	for offensiveWord in offensive_hindi_words:
 		for word in text.lower().split():
-			if fuzz.ratio(offensiveWord, word) > 75:  # Adjust the similarity threshold as needed
+			if fuzz.ratio(offensiveWord, word) > 65:  # Adjust the similarity threshold as needed
 				print(fuzz.ratio(offensiveWord, word), word, offensiveWord)
 				return True
 	return False
@@ -275,7 +275,7 @@ async def get_all_professors(request: Request):
 	
 	
 @app.get("/professors/by_school/{school}")
-@limiter.limit("30/minute")
+# @limiter.limit("30/minute")
 async def get_professors_by_school(request: Request, school: str):
 	professors = []
 	for professor in professor_collection.find({"school": re.compile(school, re.IGNORECASE)}).sort("name"):
