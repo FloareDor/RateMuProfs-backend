@@ -3,12 +3,10 @@ from pymongo import MongoClient
 import json
 from bson import ObjectId
 
-client = MongoClient('mongodb://localhost:27017/?maxPoolSize=100')
-db = client["rate_my_professor"]
-professor_collection = db["professors"]
-professor_collection.delete_many({})
+from os import environ as env
 
-def insertSampleData(filename):
+def insertSampleData(filename, db):
+	professor_collection = db["professors"]
 	with open(filename, "r") as json_file:
 		data = json.load(json_file)
 	for prof in data:
@@ -34,7 +32,12 @@ def insertSampleData(filename):
 
 	print("Document inserted successfully!")
 
-def dropDB():
+def initDB():
+	ATLAS_URL = env.get("ATLAS_URL")
+	LOCAL_DB = env.get("LOCAL_DB")
+	client = MongoClient(ATLAS_URL)
+	db = client["rate_my_professor"]
+
 	professor_collection = db["professors"]
 	professor_collection.delete_many({})
 
@@ -46,5 +49,5 @@ def dropDB():
 	rating_collection = db["ratings"]
 	rating_collection.delete_many({})
 
-	return "success"
+	return db
 

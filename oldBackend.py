@@ -26,6 +26,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+
+
 ENV_FILE = find_dotenv()
 if ENV_FILE:
 	load_dotenv(ENV_FILE)
@@ -49,9 +51,10 @@ d = 		{
 # except:
 # 	exit()
 
-# print(env.get("ATLAS_URL"))
+ATLAS_URL = env.get("ATLAS_URL")
+localDb = 'mongodb://localhost:27017/?maxPoolSize=100'
 # MongoDB professor connection
-client = MongoClient('mongodb://localhost:27017/?maxPoolSize=100')
+client = MongoClient(ATLAS_URL)
 db = client["rate_my_professor"]
 professor_collection = db["professors"]
 professor_collection.delete_many({})
@@ -600,3 +603,10 @@ async def delete_professor_rating(request: Request, authorization: str = Header(
 			response = JSONResponse({"message": "Professor rating deleted successfully"}, status_code=200)
 			return response
 	raise HTTPException(status_code=404, detail="Professor rating not found")
+
+if __name__ == "__main__":
+	import uvicorn
+
+	ssl_cert_path = '/etc/letsencrypt/live/ratemuprofs.live/fullchain.pem'
+	ssl_key_path = '/etc/letsencrypt/live/ratemuprofs.live/privkey.pem'
+	uvicorn.run(app, host="0.0.0.0", port=8000, ssl_certfile=ssl_cert_path, ssl_keyfile=ssl_key_path)

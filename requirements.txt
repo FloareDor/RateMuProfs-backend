@@ -9,3 +9,7 @@ requests
 httpx
 starlette==0.27.0
 pyjwt
+alt-profanity-check
+fuzzywuzzy
+slowapi
+python-Levenshtein
