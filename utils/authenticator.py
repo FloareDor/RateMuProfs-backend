@@ -6,7 +6,7 @@ import httpx
 from fastapi import HTTPException
 import jwt
 from starlette.requests import Request
-from datetime import timezone, datetime
+from datetime import timezone, datetime, timedelta
 from os import environ as env
 
 
@@ -17,7 +17,7 @@ class Authenticator:
 		self.JWT_SECRET = env.get("self.JWT_SECRET")
 
 	async def encode_jwt(self, userD, expire_time):
-		userD["exp"] = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(seconds=expire_time)
+		userD["exp"] = datetime.now(tz=timezone.utc) + timedelta(seconds=expire_time)
 		return jwt.encode(userD, self.JWT_SECRET, algorithm="HS256")
 
 	async def decode_jwt(self, encoded_jwt):
