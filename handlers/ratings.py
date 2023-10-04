@@ -5,10 +5,14 @@ from starlette.requests import Request
 from bson import ObjectId
 from models.schemas import ratingSchema
 from pydantic import ValidationError
+from datetime import timezone, datetime
+
 from utils.profanityFilter import containsHindiOffensiveWord
 from profanity_check import predict_prob
 
 from utils.authenticator import Authenticator
+
+from os import environ as env
 
 
 class RatingHandler:
@@ -17,7 +21,11 @@ class RatingHandler:
 		self.user_collection = db["users"]
 		self.rating_collection = db["ratings"]
 		self.professor_collection = db["professors"]
+		self.bannedUsers = db["banned_users"]
 		self.authenticator = Authenticator(db)
+
+		self.banTimeout = int(env.get("BAN_TIMEOUT"))
+		self.banChances = int(env.get("BAN_CHANCES"))
 	
 	async def add_rating(self, request: Request, authorization: str = Header(None)):
 		userData = {}
@@ -51,19 +59,60 @@ class RatingHandler:
 			if value is not None and key in subRatings:
 				rating["overallRating"] += value
 		rating["overallRating"] = rating["overallRating"] / 4
-		
-		# Check for foul language
-		if predict_prob([rating["feedback"]]) > 0.42 or await containsHindiOffensiveWord(rating["feedback"]):
-			raise HTTPException(status_code=422, detail="Warning: Feedback contains inappropriate language.")
 
 		try:
 			# Retrieve existing user data
-			existing_user = self.user_collection.find_one({"_id": ObjectId(userID)})
+			existingUser = self.user_collection.find_one({"_id": ObjectId(userID)})
 		except:
 			raise HTTPException(status_code=400, detail="Wrong userID format")
 		
-		if not existing_user:
+		if not existingUser:
 			raise HTTPException(status_code=404, detail="User not found")
+
+		# userData = self.user_collection.find_one({"_id": ObjectId(userID)})
+
+		if existingUser["banned"]:
+			timeDifference = datetime.now() - existingUser["banStartTime"]
+			if timeDifference.total_seconds() < self.banTimeout:
+				print(f"You have been temporarily banned from adding ratings. Please try again after {(self.banTimeout - timeDifference.total_seconds()) / 60} minutes.")
+				raise HTTPException(status_code=403, detail=f"You have been temporarily banned from adding ratings. Please try again after {(self.banTimeout - timeDifference.total_seconds()) / 60} minutes.")
+			
+		current_warnings = existingUser["warnings"]
+
+		# Check for foul language
+		if predict_prob([rating["feedback"]]) > 0.42 or await containsHindiOffensiveWord(rating["feedback"]):
+
+			if current_warnings >= self.banChances:
+				# Ban the user
+				result = self.user_collection.find_one_and_update(
+					{"_id": ObjectId(userID)},
+					{
+						"$set": {
+							"banned": True,
+							"banStartTime": datetime.now(timezone.utc),
+							"warnings": 0
+						}
+					},
+					return_document=ReturnDocument.AFTER
+				)
+				print(f"result: {result}")
+				raise HTTPException(status_code=422, detail="Warning: Feedback contains inappropriate language. User is now banned.")
+			else:
+				# Update the warning count
+				result = self.user_collection.find_one_and_update(
+					{"_id": ObjectId(userID)},
+					{
+						"$inc": {
+							"warnings": 1
+						}
+					},
+					return_document=ReturnDocument.AFTER
+				)
+				print(f"result: {result}")
+				raise HTTPException(status_code=422, detail=f"Warning: Feedback contains inappropriate language. This is warning {current_warnings}. You have {3 - current_warnings} warnings left before you are banned.")
+			# raise HTTPException(status_code=422, detail="Warning: Feedback contains inappropriate language.")
+
+
 		
 		if professorID and rating:
 			professor_object_id = ObjectId(professorID)

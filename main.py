@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from os import environ as env
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from pymongo import MongoClient
 
 
 app = FastAPI()
@@ -26,10 +25,10 @@ app.add_middleware(
 	expose_headers=["Authorization"],
 )
 
-ATLAS_URL = env.get("ATLAS_URL")
-localDb = 'mongodb://localhost:27017/?maxPoolSize=100'
-# MongoDB professor connection
-client = MongoClient(ATLAS_URL)
+# ATLAS_URL = env.get("ATLAS_URL")
+# localDb = 'mongodb://localhost:27017/?maxPoolSize=100'
+# # MongoDB professor connection
+# client = MongoClient(ATLAS_URL)
 # db = client["rate_my_professor"]
 
 if __name__ == "__main__":

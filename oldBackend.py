@@ -54,7 +54,7 @@ d = 		{
 ATLAS_URL = env.get("ATLAS_URL")
 localDb = 'mongodb://localhost:27017/?maxPoolSize=100'
 # MongoDB professor connection
-client = MongoClient(ATLAS_URL)
+client = MongoClient(localDb)
 db = client["rate_my_professor"]
 professor_collection = db["professors"]
 professor_collection.delete_many({})
@@ -607,6 +607,8 @@ async def delete_professor_rating(request: Request, authorization: str = Header(
 if __name__ == "__main__":
 	import uvicorn
 
-	ssl_cert_path = '/etc/letsencrypt/live/ratemuprofs.live/fullchain.pem'
-	ssl_key_path = '/etc/letsencrypt/live/ratemuprofs.live/privkey.pem'
-	uvicorn.run(app, host="0.0.0.0", port=8000, ssl_certfile=ssl_cert_path, ssl_keyfile=ssl_key_path)
+	# ssl_cert_path = '/etc/letsencrypt/live/ratemuprofs.live/fullchain.pem'
+	# ssl_key_path = '/etc/letsencrypt/live/ratemuprofs.live/privkey.pem'
+	# uvicorn.run(app, host="0.0.0.0", port=8000, ssl_certfile=ssl_cert_path, ssl_keyfile=ssl_key_path)
+
+	uvicorn.run(app, host="localhost", port=8000)
