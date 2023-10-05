@@ -20,8 +20,8 @@ class Authenticator:
 		self.db = db
 		self.user_collection = db["users"]
 		self.JWT_SECRET = env.get("JWT_SECRET")
-
 		self.banTimeout = int(env.get("BAN_TIMEOUT"))
+		self.jwtExpiryTime = int(env.get("JWT_EXPIRE_TIME"))
 
 	async def encode_jwt(self, userD, expire_time):
 		userD["exp"] = datetime.now(tz=timezone.utc) + timedelta(seconds=expire_time)
@@ -107,7 +107,7 @@ class Authenticator:
 			existingUser["_id"] = str(existingUser["_id"])
 			if "sub" in existingUser:
 				existingUser.pop("sub")
-			encoded_jwt = await self.encode_jwt(userData, expire_time=3600)
+			encoded_jwt = await self.encode_jwt(userData, expire_time=self.jwtExpiryTime)
 			if "exp" in existingUser:
 				existingUser.pop("exp")
 			# print("User already exists:", existingUser)
@@ -125,7 +125,7 @@ class Authenticator:
 			# if "sub" in userData:
 			# 	userData.pop("sub")
 			userData["_id"] = str(userData["_id"])
-			encoded_jwt = await self.encode_jwt(userData, expire_time=3600)
+			encoded_jwt = await self.encode_jwt(userData, expire_time=self.jwtExpiryTime)
 			# print(1111111111111111111)
 			if "exp" in userData:
 				userData.pop("exp")

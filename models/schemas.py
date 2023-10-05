@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator, ValidationError
 from typing import Optional, List
 from datetime import datetime
 
@@ -14,6 +14,11 @@ class ratingSchema(BaseModel):
     course: str
     date: Optional[str] = None 
     feedback: Optional[str] = None
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Additional validation logic can be placed here
+        if self.courseQuality <= 0 or self.responsiveness <= 0 or self.teachingQuality <= 0 or self.helpfulness <= 0:
+            raise ValueError('Rating values must be greater than 0')
 
 class professorSchema(BaseModel):
     _id: Optional[str] = None

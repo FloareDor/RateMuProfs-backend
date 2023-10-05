@@ -50,7 +50,7 @@ class RatingHandler:
 		try:
 			# Validate and create a RatingSchema instance
 			x = ratingSchema(**rating)
-		except ValidationError as e:
+		except Exception as e:
 			# Handle invalid rating data
 			raise HTTPException(status_code=400, detail="Invalid rating data", headers={"detail": str(e)})
 		
@@ -74,7 +74,8 @@ class RatingHandler:
 		if existingUser["banned"]:
 			timeDifference = datetime.now() - existingUser["banStartTime"]
 			if timeDifference.total_seconds() < self.banTimeout:
-				print(f"You have been temporarily banned from adding ratings. Please try again after {(self.banTimeout - timeDifference.total_seconds()) / 60} minutes.")
+				response = f"You have been temporarily banned from adding ratings. Please try again after {(self.banTimeout - timeDifference.total_seconds()) / 60} minutes."
+				return JSONResponse({"banTime": (self.banTimeout - timeDifference.total_seconds()) / 60, "response": response}, status_code=403) # in minutes
 				raise HTTPException(status_code=403, detail=f"You have been temporarily banned from adding ratings. Please try again after {(self.banTimeout - timeDifference.total_seconds()) / 60} minutes.")
 			
 		current_warnings = existingUser["warnings"]
@@ -109,7 +110,8 @@ class RatingHandler:
 					return_document=ReturnDocument.AFTER
 				)
 				print(f"result: {result}")
-				raise HTTPException(status_code=422, detail=f"Warning: Feedback contains inappropriate language. This is warning {current_warnings}. You have {3 - current_warnings} warnings left before you are banned.")
+				# returnJSONResponse({"response": "Rating created successfully"}, status_code=201)
+				raise HTTPException(status_code=422, detail=f"Warning: Feedback contains inappropriate language. This is warning {current_warnings}. You have {self.banChances - current_warnings} warnings left before you are banned.")
 			# raise HTTPException(status_code=422, detail="Warning: Feedback contains inappropriate language.")
 
 
