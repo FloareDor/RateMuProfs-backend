@@ -18,7 +18,10 @@ offensive_hindi_words = [
 		"maar", "maro", "marunga", "madarchod", "madarchodd", "madarchood", "madarchoot", "madarchut", "mamme", "mammey", "moot", "mut", "mootne", "mutne", "mooth", "muth", "nunni", 
 		"nunnu", "paaji", "paji", "pesaab", "pesab", "peshaab", "peshab", "pilla", "pillay", "pille", 
 		"pilley", "pisaab", "pisab", "pkmkb", "porkistan", "raand", "rand", "randi", "randy", "suar", 
-		"tatte", "tatti", "tatty", "ullu", "chewtiya"
+		"tatte", "tatti", "tatty", "ullu", "chewtiya",
+
+		"dengu", "lanja", "pooka", "modda", "gudda", "ne amma pukkulo naa modda", "Guddha naku", "Bosudi", "erripooka", "pichipook", "ne akka", "yedava", "dunnapotu", "addagadidha", "donga naa kodaka",
+		"lauda"
 	]
 
 async def containsHindiOffensiveWord(text):
